@@ -1,0 +1,37 @@
+# Generated PDFs
+Output/*.pdf
+RunningTemplate/*.pdf
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.toc
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+
+# Python
+__pycache__/
+*.pyc
+
+# Rust build output and local runtime data
+target/
+web/*.db*
+
+# Downloaded platform-specific tooling
+web/tailwindcss-*
+
+# Local config (contains API keys)
+Scripts/config_local.py
+
+# Environment (contains API keys)
+.env
+
+# macOS
+.DS_Store
+
+# Local agent workspace state
+.codewhale/

@@ -1,0 +1,192 @@
+% =============================================================================
+%  Gopal Kumar — Base LaTeX Resume Template
+%  Designed for easy LLM-based tailoring via Python scripts
+% =============================================================================
+
+\documentclass[10pt,letterpaper]{article}
+
+% --- Packages ---
+\usepackage[letterpaper, margin=0.4in, top=0.2in, bottom=0.2in, nohead, nofoot]{geometry}
+\usepackage{titlesec}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage[english]{babel}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{fontawesome5}
+\usepackage{hyperref}
+
+% --- Colors ---
+\definecolor{sectioncolor}{RGB}{40,40,40}
+\definecolor{accentcolor}{RGB}{0,100,160}
+
+% --- Suppress minor overfull hbox warnings (common in tight resume layouts) ---
+\hfuzz=16pt
+
+% --- Section formatting ---
+\titleformat{\section}
+  {\vspace{-2pt}\scshape\raggedright\small\color{sectioncolor}}
+  {}{0em}
+  {}
+  [\vspace{-2pt}]
+
+% --- List formatting ---
+\setlist[itemize]{
+  leftmargin=10pt,
+  labelindent=0pt,
+  labelsep=3pt,
+  itemsep=0pt,
+  parsep=0pt,
+  topsep=0pt,
+  label=\textbullet
+}
+
+% --- Hyperlink setup ---
+\hypersetup{
+  colorlinks=true,
+  linkcolor=accentcolor,
+  urlcolor=accentcolor,
+}
+
+% --- Custom commands ---
+\newcommand{\resumeItem}[1]{\item\small{#1\vspace{-2pt}}}
+\newcommand{\resumeSubheading}[4]{
+  \vspace{1pt}
+  \begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}X@{}r@{}}
+    \textbf{\small #1} & \textit{\footnotesize #2} \\
+    \textit{\footnotesize #3} & \textit{\footnotesize #4} \\
+  \end{tabularx}
+  \vspace{-1pt}
+}
+\newcommand{\resumeProject}[2]{
+  \vspace{1pt}
+  \begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}X@{}r@{}}
+    \textbf{\small #1} & \textit{\footnotesize #2} \\
+  \end{tabularx}
+  \vspace{-1pt}
+}
+\newcommand{\resumeSubItem}[1]{\resumeItem{#1}\vspace{-3pt}}
+
+% =============================================================================
+\begin{document}
+\small
+\enlargethispage{8\baselineskip}
+
+% === HEADER
+\begin{center}
+  {\LARGE \textbf{Gopal Kumar}} \\[2pt]
+  \footnotesize
+  \faEnvelope\ \href{mailto:gopalkmr19@gmail.com}{gopalkmr19@gmail.com}
+  \ $\vert$\
+  \faLinkedin\ \href{https://www.linkedin.com/in/gkciitp}{linkedin.com/in/gkciitp}
+  \ $\vert$\
+  \faPhone\ (510) 944-9097
+  \ $\vert$\
+  \faMapMarker*\ Seattle, WA, 98105
+  \ $\vert$\
+  \faComments\ \href{https://calendly.com/gopalkumar}{Lets Chat!}
+\end{center}
+
+% === EDUCATION
+\section{Education}
+
+\resumeSubheading
+  {University of California, Berkeley}{Seattle, WA}
+  {M.Eng, Industrial Engineering \& Operations Research (FinTech)}{Aug 2022 -- May 2023}
+
+\resumeSubheading
+  {Indian Institute of Technology, Patna}{Patna, India}
+  {B.Tech, Computer Science \& Engineering}{Jul 2014 -- May 2018}
+
+% === TECHNICAL STACK
+\section{Technical Stack}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Programming:} Python, R, Spark, SQL, VBA, AMPL, CPLEX, HTML/CSS, JavaScript, Django, Next.js
+  \item \textbf{AI/ML:} LangChain, LlamaIndex, Hugging Face, OpenAI SDK, Azure AI SDK, FastAPI, Streamlit, Ollama, Claude API, n8n \textbf{$\cdot$} pandas, numpy, scikit-learn, statsmodels, TensorFlow, XGBoost
+  \item \textbf{Cloud \& Data:} Azure (Data Factory, Synapse, ML Studio, Fabric), AWS (S3, Lambda, SageMaker) \textbf{$\cdot$} MySQL, Oracle, RedShift, Snowflake, dbt
+  \item \textbf{BI \& Viz:} Tableau, QuickSight, Power BI, Excel, IBM Cognos \textbf{$\cdot$} EViews, Haver Analytics, JPM DataQuery, Refinitiv, Bloomberg
+  \item \textbf{Certifications:} AWS ML Engineer Assoc., AI Practitioner, Cloud Practitioner \textbf{$\cdot$} Azure Developer Assoc., AI Engineer Assoc., Data Scientist Assoc., Cloud Practitioner
+\end{itemize}
+
+% === WORK EXPERIENCE
+\section{Work Experience}
+
+\resumeSubheading
+  {Amazon}{Seattle, WA}
+  {BIE II, FBA Product \& Tech Finance, WW Stores}{Jan 2025 -- Present}
+\begin{itemize}
+  \resumeItem{Analyzed 25+ seller fee types and 90+ defect types to inform FY26 financial planning; brought strategic clarity across global operations.}
+  \resumeItem{Led a cross-functional initiative with SCOT, Placement, and Defects teams to fix missed fee scenarios, unlocking \$30M in annual revenue.}
+  \resumeItem{Owned end-to-end analytics for WBRs/MBRs/OP2s; delivered insights to senior leadership (L8--L10) for data-driven decision making.}
+\end{itemize}
+
+\resumeSubheading
+  {Microsoft}{Redmond, WA}
+  {BI Engineer, Sales Analytics, FastTrack, Microsoft 365}{Aug 2023 -- Dec 2024}
+\begin{itemize}
+  \resumeItem{Built LLM-powered chatbots and SQL agents to deliver AI-driven sales insights, enabling self-service analytics for field teams.}
+  \resumeItem{Built ensemble models to forecast short- and long-term workload usage across multiple FastTrack services and customer segments.}
+\end{itemize}
+
+\resumeSubheading
+  {JP Morgan}{Mumbai, India}
+  {Associate, Economic \& Policy Research, US Economics}{Jan 2020 -- May 2022}
+\begin{itemize}
+  \resumeItem{Co-authored 20+ high-impact macro reports viewed weekly by 1000+ clients; covered AMER labor markets, inflation, and policy shifts.}
+  \resumeItem{Engineered pipelines for data cleaning, visualization, and econometric modeling---core to the team's forecasting strategy.}
+  \resumeItem{Amplified firm visibility by securing media placements in Bloomberg Quint and Yahoo Finance, boosting client engagement by 10\%.}
+  \resumeItem{Part of the Global Fixed-Income research team which topped rankings by institutional investors in 2020 and 2021.}
+\end{itemize}
+
+\resumeSubheading
+  {JP Morgan}{Mumbai, India}
+  {Analyst, Research Automation \& Analytics, Global Research}{Jul 2018 -- Dec 2019}
+\begin{itemize}
+  \resumeItem{Built scalable automation tools and databases supporting 1500+ research analysts---saving 4000+ annual hours via workflow redesigns.}
+  \resumeItem{Designed and deployed web scraping and report generation systems, transforming manual research output into efficient pipelines.}
+\end{itemize}
+
+% === KEY PROJECTS
+\section{Key Projects}
+
+\resumeProject{FBA Fee Leak Analysis, WW FBA Product Finance}{2025, Amazon}
+\begin{itemize}
+  \resumeItem{Investigated seller abuse patterns in shipments sent to fewer FCs than required, bypassing policy-based fee structures.}
+\end{itemize}
+
+\resumeProject{Customer Usage Forecasting, FastTrack}{2024, Microsoft}
+\begin{itemize}
+  \resumeItem{Built ensemble forecasts across 10+ services for all tenants, improving usage predictions and planning recommendations.}
+\end{itemize}
+
+\resumeProject{US: Alternative Data Jobs Tracker, US Econ Research}{2020--21, JP Morgan}
+\begin{itemize}
+  \resumeItem{Developed a nonfarm payroll forecast tracker using \textasciitilde25 high-frequency alternative datasets, outperforming traditional econometric models.}
+\end{itemize}
+
+\resumeProject{Research News Aggregator, Research FinTech}{2018--19, JP Morgan}
+\begin{itemize}
+  \resumeItem{Engineered a news aggregator with personalized RSS feeds and APIs for analysts, achieving 25\% increase in information accessibility.}
+\end{itemize}
+
+% === NOTABLE PUBLICATIONS
+\section{Notable Publications}
+
+\begin{itemize}
+  \resumeItem{\textbf{``India: A Powell-ian deconstruction of India's CPI,''} with Sajjid Z Chinoy \& Toshi Jain, Bloomberg Quint, Oct 2021. Introduced 3 alt-CPI indices from 300+ time series; drew 3k+ user engagements.}
+  \resumeItem{\textbf{``US: Lessons from a year of alt data watching,''} with Jesse Edgerton \& Dan Weitzenfeld, JP Morgan, Mar 2021. Summarized utility of alternative data; high-frequency data provided early signals of pandemic turning points.}
+  \resumeItem{\textbf{``Latent dirichlet allocation for CPS patent topic discovery,''} with U.H. Govindarajan \& Amy J.C. Trappey, IcoIESE, 2018. LDA model identifying relationships between terms and topics in IP dynamics.}
+\end{itemize}
+
+% === AWARDS
+\section{Awards}
+
+\begin{itemize}
+  \resumeItem{\textbf{Fung Fellowship}, Fung Institute for Engineering Leadership, UC Berkeley (2022) --- \$40,000 USD.}
+  \resumeItem{\textbf{GEL Fellowship}, National Tsing Hua University (2017) --- 100,000 NT\$, Global Engineering Leadership fellowship for research.}
+\end{itemize}
+
+\end{document}

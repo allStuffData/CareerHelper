@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+</head>
+<body class="bg-white text-slate-800 antialiased min-h-screen">
+
+    <!-- Navbar -->
+    <nav class="border-b border-slate-200 bg-white sticky top-0 z-10">
+        <div class="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
+            <a href="/" class="text-lg font-semibold tracking-tight text-slate-800">
+                📋 CareerHelper
+            </a>
+            <div class="flex items-center gap-4 text-sm text-slate-500">
+                <a href="/templates" class="hover:text-slate-800 transition-colors">Templates</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Content -->
+    <main class="max-w-4xl mx-auto px-4 py-8">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="max-w-4xl mx-auto px-4 py-8 text-center text-xs text-slate-400">
+        CareerHelper — ATS-optimized resumes, no clutter.
+    </footer>
+
+</body>
+</html>
