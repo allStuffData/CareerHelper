@@ -82,11 +82,24 @@ class JobManager:
                     queue.put_nowait(None)
 
     # ── subscribing ──────────────────────────────────────────────────────
-    async def subscribe(self, generation_id: str) -> AsyncIterator[dict]:
+    async def subscribe(
+        self,
+        generation_id: str,
+        *,
+        is_alive: Optional[Callable[[], bool]] = None,
+        poll_interval: float = 0.5,
+    ) -> AsyncIterator[dict]:
         """Yield progress events for ``generation_id``.
 
         Replays events already emitted, then streams live events until the
         terminal ``completed``/``failed`` event arrives.
+
+        When ``is_alive`` is supplied the generator also stops once the
+        producer is gone, so a subscriber can never block forever on an event
+        that will never be published (its process died mid-run, or it failed
+        before publishing a terminal event). Any events already queued are
+        drained first, so a terminal event published just before the producer
+        stopped is still delivered.
         """
         queue: asyncio.Queue = asyncio.Queue()
         with self._lock:
@@ -101,7 +114,25 @@ class JobManager:
             if terminal_already:
                 return
             while True:
-                item = await queue.get()
+                if is_alive is None:
+                    item = await queue.get()
+                else:
+                    try:
+                        item = await asyncio.wait_for(
+                            queue.get(), timeout=poll_interval
+                        )
+                    except asyncio.TimeoutError:
+                        if is_alive():
+                            continue
+                        while True:
+                            try:
+                                pending = queue.get_nowait()
+                            except asyncio.QueueEmpty:
+                                break
+                            if pending is None:
+                                return
+                            yield pending
+                        return
                 if item is None:
                     break
                 yield item

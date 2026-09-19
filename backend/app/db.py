@@ -87,6 +87,13 @@ _GENERATION_COLUMNS = (
 # Columns that may be updated after creation.
 _MUTABLE_COLUMNS = frozenset(_GENERATION_COLUMNS) - {"id", "company", "role", "created_at"}
 
+# Recorded on rows whose owning process disappeared mid-run.
+INTERRUPTED_ERROR_CODE = "interrupted"
+INTERRUPTED_MESSAGE = (
+    "Interrupted: the backend stopped while this generation was running. "
+    "Submit it again to retry."
+)
+
 
 def utcnow_iso() -> str:
     """Return the current UTC time as an ISO-8601 string."""
@@ -202,6 +209,47 @@ class GenerationStore:
                 (limit, offset),
             ).fetchall()
         return [self._row_to_generation(row) for row in rows]
+
+    def reap_interrupted(
+        self,
+        error_code: str = INTERRUPTED_ERROR_CODE,
+        error_message: str = INTERRUPTED_MESSAGE,
+    ) -> list[str]:
+        """Mark generations left non-terminal by a previous process as failed.
+
+        Jobs run in-process, so any row still ``queued``/``running`` when a new
+        process starts is a ghost: its task died with the process that owned it
+        and can never publish a terminal event. Without this, such rows stay
+        in-progress forever in ``/history`` and their SSE stream never ends.
+
+        Assumes a single backend process per database (the local-first MVP
+        design); with concurrent workers a live job could be reaped.
+
+        Returns the ids that were reaped.
+        """
+        terminal = (GenerationStatus.COMPLETED.value, GenerationStatus.FAILED.value)
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id FROM generations WHERE status NOT IN (?, ?)", terminal
+            ).fetchall()
+            if not rows:
+                return []
+            self._conn.execute(
+                "UPDATE generations "
+                "SET status = ?, stage = ?, error_code = ?, error_message = ?, "
+                "    completed_at = COALESCE(completed_at, ?) "
+                "WHERE status NOT IN (?, ?)",
+                (
+                    GenerationStatus.FAILED.value,
+                    GenerationStage.FAILED.value,
+                    error_code,
+                    error_message,
+                    utcnow_iso(),
+                    *terminal,
+                ),
+            )
+            self._conn.commit()
+        return [row["id"] for row in rows]
 
     def delete_generation(self, generation_id: str) -> bool:
         with self._lock:

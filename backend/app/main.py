@@ -58,6 +58,13 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         jobs.bind_loop(asyncio.get_running_loop())
+        reaped = store.reap_interrupted()
+        if reaped:
+            logger.warning(
+                "Reaped %d generation(s) interrupted by a previous run: %s",
+                len(reaped),
+                ", ".join(reaped),
+            )
         if not adapter.available:
             logger.warning(
                 "Phase 1 services are not available (missing: %s); "

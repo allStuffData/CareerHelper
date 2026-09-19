@@ -73,3 +73,35 @@ def test_template_version_lookup_returns_none_when_absent(store):
 
 def test_is_healthy(store):
     assert store.is_healthy() is True
+
+
+def test_reap_interrupted_fails_every_non_terminal_row(store):
+    """Ghost rows from a killed process must not stay in-progress forever."""
+    from app.db import INTERRUPTED_ERROR_CODE
+
+    store.create_generation(_generation("ghost-queued"))
+    store.create_generation(_generation("ghost-running"))
+    store.update_generation(
+        "ghost-running",
+        status=GenerationStatus.RUNNING,
+        stage=GenerationStage.CALLING_KIMI,
+    )
+    store.create_generation(_generation("real-done"))
+    store.update_generation("real-done", status=GenerationStatus.COMPLETED)
+    store.create_generation(_generation("real-failed"))
+    store.update_generation("real-failed", status=GenerationStatus.FAILED)
+
+    reaped = store.reap_interrupted()
+    assert set(reaped) == {"ghost-queued", "ghost-running"}
+
+    ghost = store.get_generation("ghost-running")
+    assert ghost.status == GenerationStatus.FAILED
+    assert ghost.stage == GenerationStage.FAILED
+    assert ghost.error_code == INTERRUPTED_ERROR_CODE
+    assert ghost.error_message
+    assert ghost.completed_at is not None
+
+    # Terminal rows are untouched, and reaping twice is a no-op.
+    assert store.get_generation("real-done").status == GenerationStatus.COMPLETED
+    assert store.get_generation("real-failed").status == GenerationStatus.FAILED
+    assert store.reap_interrupted() == []

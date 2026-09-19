@@ -9,6 +9,7 @@ from urllib.parse import unquote
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.models.generation import GenerationStatus
 from app.services.integration import ServiceAdapter
 from tests.conftest import FakeAdapter, wait_for_status
 
@@ -236,3 +237,168 @@ def test_tex_artifact_is_snapshotted_per_generation(settings, store, jobs):
         assert tex.status_code == 200
         assert "CLOBBERED" not in tex.text
         assert "documentclass" in tex.text
+
+
+def _orphan(gid: str):
+    from app.models.generation import (
+        Generation,
+        GenerationStage,
+        GenerationStatus,
+    )
+
+    return Generation(
+        id=gid,
+        company="Stripe",
+        role="Technical Program Manager",
+        job_description="Lead cross-functional programs.",
+        status=GenerationStatus.RUNNING,
+        stage=GenerationStage.CALLING_KIMI,
+    )
+
+
+def test_events_stream_terminates_for_an_orphaned_generation(client, store):
+    """A row whose process died must end its SSE stream instead of hanging.
+
+    The UI waits on this stream; before the fix it stayed open forever because
+    no producer would ever publish the terminal event.
+    """
+    store.create_generation(_orphan("orphan-events"))
+
+    with client.stream(
+        "GET", "/api/generations/orphan-events/events"
+    ) as stream:
+        assert stream.status_code == 200
+        events = [
+            json.loads(line[len("data:") :].strip())
+            for line in stream.iter_lines()
+            if line.startswith("data:")
+        ]
+
+    assert len(events) == 1
+    assert events[0]["generation_id"] == "orphan-events"
+    assert events[0]["status"] == "failed"
+    assert events[0]["stage"] == "failed"
+    assert events[0]["error_code"] == "interrupted"
+
+    row = store.get_generation("orphan-events")
+    assert row.status == GenerationStatus.FAILED
+    assert row.error_code == "interrupted"
+
+    # The reaped row is terminal, so /history stops showing it as live.
+    assert client.get("/api/generations/orphan-events/events").status_code == 200
+
+
+def test_startup_reaps_generations_left_behind_by_a_previous_run(
+    settings, store, jobs
+):
+    store.create_generation(_orphan("orphan-startup"))
+
+    app = create_app(
+        settings=settings,
+        store=store,
+        jobs=jobs,
+        adapter=FakeAdapter(settings.artifacts_dir),
+    )
+    with TestClient(app):
+        listing = store.list_generations()
+    assert [row.id for row in listing if row.status not in (GenerationStatus.COMPLETED, GenerationStatus.FAILED)] == []
+
+    row = store.get_generation("orphan-startup")
+    assert row.status == GenerationStatus.FAILED
+    assert row.error_code == "interrupted"
+    assert row.completed_at is not None
+
+
+def test_client_disconnect_does_not_fail_a_live_generation(
+    settings, store, jobs
+):
+    """Ending the SSE stream early must not reap a generation that is running.
+
+    Browsers disconnect constantly in normal use (navigating away, reload, or
+    the Next dev server remounting the view). The row belongs to the job, which
+    will publish its own terminal event, so a disconnect has to close the
+    stream without writing ``failed`` over a live run.
+    """
+    import asyncio
+    import threading
+    import time
+
+    from starlette.requests import Request
+
+    from app.api.generations import generation_events
+    from app.contracts import (
+        STAGE_CALLING_KIMI,
+        STAGE_PREPARING_PROMPT,
+        ProgressEvent,
+    )
+
+    release = threading.Event()
+
+    class BlockingAdapter(FakeAdapter):
+        """Run long enough for a subscriber to attach, then finish normally."""
+
+        def run(self, request, progress_callback=None):
+            if progress_callback is not None:
+                progress_callback(
+                    ProgressEvent(stage=STAGE_PREPARING_PROMPT, message="prep")
+                )
+                progress_callback(
+                    ProgressEvent(stage=STAGE_CALLING_KIMI, message="kimi")
+                )
+            release.wait(timeout=10)
+            return super().run(request)
+
+    app = create_app(
+        settings=settings,
+        store=store,
+        jobs=jobs,
+        adapter=BlockingAdapter(settings.artifacts_dir),
+    )
+
+    with TestClient(app) as client:
+        created = client.post("/api/generations", json=PAYLOAD)
+        assert created.status_code == 202
+        generation_id = created.json()["id"]
+
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and not jobs.has_events(generation_id):
+            time.sleep(0.01)
+        assert jobs.has_events(generation_id)
+        assert jobs.is_active(generation_id)
+
+        async def disconnected():
+            return {"type": "http.disconnect"}
+
+        request = Request(
+            {
+                "type": "http",
+                "http_version": "1.1",
+                "method": "GET",
+                "scheme": "http",
+                "path": f"/api/generations/{generation_id}/events",
+                "raw_path": b"/events",
+                "query_string": b"",
+                "headers": [],
+                "server": ("testserver", 80),
+                "client": ("testclient", 12345),
+                "root_path": "",
+                "app": app,
+            },
+            disconnected,
+        )
+
+        async def drain() -> list:
+            response = await generation_events(generation_id, request)
+            return [chunk async for chunk in response.body_iterator]
+
+        try:
+            assert asyncio.run(drain()) == []
+
+            row = store.get_generation(generation_id)
+            assert row.status == GenerationStatus.RUNNING
+            assert row.error_code is None
+        finally:
+            release.set()
+
+        assert wait_for_status(client, generation_id)["status"] == "completed"
+        assert store.get_generation(generation_id).error_code is None

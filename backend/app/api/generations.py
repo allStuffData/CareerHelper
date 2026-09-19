@@ -19,6 +19,7 @@ from app.schemas.generation import (
     GenerationResponse,
 )
 from app.services.integration import artifact_filename, build_generation_id
+from app.services.job_manager import TERMINAL_STAGES
 
 router = APIRouter(prefix="/api/generations", tags=["generations"])
 logger = logging.getLogger(__name__)
@@ -199,10 +200,29 @@ async def generation_events(generation_id: str, request: Request) -> StreamingRe
         if already_terminal and not jobs.has_events(generation_id):
             yield _sse(_terminal_snapshot(generation))
             return
-        async for event in jobs.subscribe(generation_id):
+        if not jobs.is_active(generation_id) and not jobs.has_events(generation_id):
+            # The row is non-terminal but no task owns it: its process is gone.
+            # Reap it so the stream ends and /history stops showing it as live.
+            yield _sse(_terminal_snapshot(_reap(store, generation)))
+            return
+        terminal_seen = False
+        async for event in jobs.subscribe(
+            generation_id, is_alive=lambda: jobs.is_active(generation_id)
+        ):
             if await request.is_disconnected():
-                break
+                # The browser stopped listening (navigation, reload, or a
+                # StrictMode remount). The job keeps running and still owns its
+                # own final state, so end the stream without touching the row:
+                # reaping here would report a crash for a live generation.
+                return
+            if event.get("stage") in TERMINAL_STAGES:
+                terminal_seen = True
             yield _sse(event)
+        if not terminal_seen:
+            # subscribe() only ends early when its producer is gone (the
+            # terminal event is always delivered first when one is published),
+            # so a non-terminal row here can no longer finish on its own.
+            yield _sse(_terminal_snapshot(_reap(store, generation)))
 
     return StreamingResponse(
         _stream(),
@@ -213,6 +233,26 @@ async def generation_events(generation_id: str, request: Request) -> StreamingRe
             "X-Accel-Buffering": "no",
         },
     )
+
+
+def _reap(store, generation: Generation) -> Generation:
+    """Mark an orphaned generation as failed and return the current record.
+
+    Idempotent: an already-terminal row is returned untouched.
+    """
+    if generation.status in (GenerationStatus.COMPLETED, GenerationStatus.FAILED):
+        return generation
+    from app.db import INTERRUPTED_ERROR_CODE, INTERRUPTED_MESSAGE
+
+    updated = store.update_generation(
+        generation.id,
+        status=GenerationStatus.FAILED,
+        stage=STAGE_FAILED,
+        error_code=INTERRUPTED_ERROR_CODE,
+        error_message=INTERRUPTED_MESSAGE,
+    )
+    logger.warning("Reaped orphaned generation %s", generation.id)
+    return updated or generation
 
 
 def _terminal_snapshot(generation: Generation) -> dict:
