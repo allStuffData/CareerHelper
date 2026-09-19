@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { apiBaseUrl } from "@/lib/api";
+import { apiBaseUrl, decodeRouteParam } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -14,7 +14,9 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await params;
+  const { id: rawId } = await params;
+  // Decode exactly once: the browser encoded this segment already.
+  const id = decodeRouteParam(rawId);
   const upstreamUrl = `${apiBaseUrl()}/api/generations/${encodeURIComponent(
     id,
   )}/events`;

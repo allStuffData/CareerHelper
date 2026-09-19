@@ -38,6 +38,42 @@ export function apiBaseUrl(): string {
   return (raw && raw.length > 0 ? raw : DEFAULT_BASE_URL).replace(/\/+$/, "");
 }
 
+/**
+ * Decode one dynamic route segment exactly once.
+ *
+ * Next.js hands the `[id]` param to pages and route handlers still
+ * percent-encoded (`%20` for a space), while every consumer below —
+ * `getGeneration`, `deleteGeneration`, and the proxy URLs in
+ * `src/app/api/generations/[id]/*` — encodes the value again before putting it
+ * on the wire. Passing the raw param through therefore double-encodes it
+ * (`%20` -> `%2520`) and the backend answers 404 for any generation id
+ * containing a space, such as `GopalKumar_Stripe_Technical Program
+ * Manager_20260919-3`.
+ *
+ * Decoding at the route boundary restores the intended asymmetry: the browser
+ * encodes once, the server decodes once.
+ */
+export function decodeRouteParam(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    // Not a well-formed escape sequence, so it cannot be a real id either.
+    // Pass it through and let the backend answer with its own 404.
+    return value;
+  }
+}
+
+/**
+ * Make a generation id safe to echo inside an HTTP header value.
+ *
+ * The id originates from a URL segment, so it must never be able to inject
+ * separators or quote out of the fallback `filename="..."` parameter.
+ */
+export function safeHeaderFilename(value: string, fallback = "artifact"): string {
+  const cleaned = value.replace(/[^A-Za-z0-9._ -]/g, "_").trim();
+  return cleaned.length > 0 ? cleaned : fallback;
+}
+
 async function readErrorDetail(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as { detail?: unknown };

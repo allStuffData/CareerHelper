@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 
 import GenerationProgress from "@/components/GenerationProgress";
-import { ApiError, getGeneration } from "@/lib/api";
+import { ApiError, decodeRouteParam, getGeneration } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +10,10 @@ export default async function GenerateResultPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = await params;
+  const { id: rawId } = await params;
+  // Next.js hands `[id]` over percent-encoded; decode once so `getGeneration`
+  // does not re-encode an already-encoded id (see `decodeRouteParam`).
+  const id = decodeRouteParam(rawId);
 
   let generation;
   try {

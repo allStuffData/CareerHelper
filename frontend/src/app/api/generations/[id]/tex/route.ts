@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { apiBaseUrl } from "@/lib/api";
+import { apiBaseUrl, decodeRouteParam, safeHeaderFilename } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -10,7 +10,9 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await params;
+  const { id: rawId } = await params;
+  // Decode exactly once: the browser encoded this segment already.
+  const id = decodeRouteParam(rawId);
   const upstreamUrl = `${apiBaseUrl()}/api/generations/${encodeURIComponent(
     id,
   )}/tex`;
@@ -39,7 +41,7 @@ export async function GET(
   headers.set(
     "Content-Disposition",
     upstream.headers.get("content-disposition") ??
-      `attachment; filename="${id}.tex"`,
+      `attachment; filename="${safeHeaderFilename(id, "resume")}.tex"`,
   );
 
   return new NextResponse(upstream.body, { status: 200, headers });
