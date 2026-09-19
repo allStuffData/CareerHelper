@@ -7,8 +7,8 @@ from fastapi import Request
 from app.core.config import Settings
 from app.services.integration import ServiceAdapter
 from app.services.job_runner import GenerationRunner
-from app.services.jobs import JobManager
-from app.services.storage import GenerationStore
+from app.services.job_manager import JobManager
+from app.db import GenerationStore
 
 
 def get_settings(request: Request) -> Settings:

@@ -1,21 +1,29 @@
 """Integration adapter between the FastAPI layer and the Phase 1 services.
 
-Phase 1 extracts the resume pipeline into reusable functions:
+Phase 1's authoritative contracts (``backend/app/services``) are:
 
 * ``tailor_resume(template, job_description, company, role) -> TailoringResult``
+  (:mod:`app.services.tailoring`)
 * ``compile_latex(latex_source, generation_id) -> ArtifactResult``
+  (:mod:`app.services.latex`)
 * ``run_generation(request, progress_callback) -> GenerationResult``
+  (:mod:`app.services.jobs`)
 
-This module resolves those callables from the ``app.services`` package at call
-time (so Phase 2 does not hard-depend on Phase 1 landing order) and normalises
-their outputs into the dataclasses in :mod:`app.contracts`. Keeping every
-Phase 1 assumption here means the two phases can be reconciled in one place.
+with ``GenerationRequest`` / ``ProgressEvent`` / ``GenerationResult`` owned by
+``app.services.jobs``.
+
+This module resolves those callables at call time (so Phase 2 does not
+hard-depend on Phase 1 landing order or module layout) and normalises their
+outputs into the dataclasses in :mod:`app.contracts`. Every Phase 1 assumption
+lives here, so the two phases can be reconciled in one place: if the real
+module paths change, update the ``_*_MODULES`` tuples below.
 """
 
 from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 from app.contracts import (
@@ -34,19 +42,20 @@ from app.contracts import (
 )
 
 # Candidate module paths searched for each Phase 1 callable, in priority
-# order. Add new locations here when reconciling with the Phase 1 branch.
+# order. ``app.services`` is the package re-export surface defined by Phase 1.
 _RUN_GENERATION_MODULES = (
+    "app.services.jobs",
     "app.services.generation",
     "app.services.pipeline",
-    "app.services.tailoring",
+    "app.services",
 )
 _TAILOR_RESUME_MODULES = (
     "app.services.tailoring",
-    "app.services.generation",
+    "app.services",
 )
 _COMPILE_LATEX_MODULES = (
     "app.services.latex",
-    "app.services.generation",
+    "app.services",
 )
 
 
@@ -81,6 +90,14 @@ def _field(source: Any, *names: str, default: Any = None) -> Any:
     return default
 
 
+def _as_str(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, Path):
+        return str(value)
+    return str(value)
+
+
 def normalize_progress(event: Any) -> Optional[ProgressEvent]:
     """Normalise whatever Phase 1 emits into a :class:`ProgressEvent`."""
     if event is None:
@@ -96,16 +113,26 @@ def normalize_progress(event: Any) -> Optional[ProgressEvent]:
         stage=str(stage),
         message=_field(event, "message", "detail"),
         percent=_field(event, "percent", "progress"),
-        error_code=_field(event, "error_code", "code"),
+        error_code=_field(event, "error_code", "code", "error_type"),
         error_message=_field(event, "error_message", "error"),
     )
 
 
 def normalize_tailoring(result: Any) -> TailoringResult:
+    """Normalise Phase 1's ``TailoringResult`` (or a mapping) into ours."""
     if isinstance(result, TailoringResult):
         return result
     return TailoringResult(
-        latex=_field(result, "latex", "tex", "tex_content", "content", default="") or "",
+        latex=_field(
+            result,
+            "latex_source",
+            "latex",
+            "tex",
+            "tex_content",
+            "content",
+            default="",
+        )
+        or "",
         raw_response=_field(result, "raw_response", "response"),
         prompt_tokens=_field(result, "prompt_tokens", "input_tokens"),
         completion_tokens=_field(result, "completion_tokens", "output_tokens"),
@@ -114,19 +141,38 @@ def normalize_tailoring(result: Any) -> TailoringResult:
 
 
 def normalize_artifact(result: Any) -> ArtifactResult:
+    """Normalise Phase 1's ``ArtifactResult`` (or a mapping) into ours."""
     if isinstance(result, ArtifactResult):
         return result
     if result is None:
         return ArtifactResult(error="compile_latex returned no result")
+    success = _field(result, "success")
+    pdf_path = _as_str(_field(result, "pdf_path", "pdf", "output_pdf"))
+    error = _field(result, "error", "error_message")
+    if success is False and error is None:
+        error = "LaTeX compilation failed"
     return ArtifactResult(
-        pdf_path=_as_str(_field(result, "pdf_path", "pdf", "output_pdf")),
+        pdf_path=pdf_path,
         tex_path=_as_str(_field(result, "tex_path", "tex", "output_tex")),
-        error=_field(result, "error", "error_message"),
-        log_excerpt=_field(result, "log_excerpt", "log"),
+        error=error,
+        log_excerpt=_field(result, "log_tail", "log_excerpt", "log"),
+    )
+
+
+def _tokens_from(usage: Any) -> tuple[Optional[int], Optional[int]]:
+    if not usage:
+        return None, None
+    get = usage.get if isinstance(usage, dict) else lambda key, default=None: getattr(
+        usage, key, default
+    )
+    return (
+        get("prompt_tokens") or get("input_tokens"),
+        get("completion_tokens") or get("output_tokens"),
     )
 
 
 def normalize_generation(result: Any) -> GenerationResult:
+    """Normalise Phase 1's ``GenerationResult`` (or a mapping) into ours."""
     if isinstance(result, GenerationResult):
         return result
     if result is None:
@@ -135,24 +181,64 @@ def normalize_generation(result: Any) -> GenerationResult:
             error_code="empty_result",
             error_message="run_generation returned no result",
         )
-    status = _field(result, "status", default=STAGE_COMPLETED)
+
+    artifact = _field(result, "artifact")
+    tailoring = _field(result, "tailoring")
+    usage = _field(tailoring, "usage")
+    usage_prompt, usage_completion = _tokens_from(usage)
+
+    success = _field(result, "success")
+    if success is not None:
+        status = STAGE_COMPLETED if success else STAGE_FAILED
+    else:
+        status = str(_field(result, "status", default=STAGE_COMPLETED))
+
+    pdf_path = _field(result, "pdf_path", "pdf", "output_pdf")
+    if pdf_path is None and artifact is not None:
+        pdf_path = _field(artifact, "pdf_path")
+    tex_path = _field(result, "tex_path", "output_tex")
+    if tex_path is None and artifact is not None:
+        tex_path = _field(artifact, "tex_path")
+
+    latex = _field(
+        result, "latex_source", "latex", "tex", "tex_content", default=""
+    )
+
     return GenerationResult(
-        latex=_field(result, "latex", "tex", "tex_content", default="") or "",
-        pdf_path=_as_str(_field(result, "pdf_path", "pdf", "output_pdf")),
-        tex_path=_as_str(_field(result, "tex_path", "tex", "output_tex")),
-        status=str(status),
-        error_code=_field(result, "error_code", "code"),
+        latex=latex or "",
+        pdf_path=_as_str(pdf_path),
+        tex_path=_as_str(tex_path),
+        status=status,
+        error_code=_field(result, "error_code", "error_type", "code"),
         error_message=_field(result, "error_message", "error"),
-        prompt_tokens=_field(result, "prompt_tokens", "input_tokens"),
-        completion_tokens=_field(result, "completion_tokens", "output_tokens"),
-        model=_field(result, "model"),
+        prompt_tokens=_field(result, "prompt_tokens", "input_tokens")
+        or usage_prompt,
+        completion_tokens=_field(result, "completion_tokens", "output_tokens")
+        or usage_completion,
+        model=_field(result, "model") or _field(tailoring, "model"),
     )
 
 
-def _as_str(value: Any) -> Optional[str]:
-    if value is None:
-        return None
-    return str(value)
+def _build_phase1_request(request: GenerationRequest) -> Any:
+    """Translate our request into Phase 1's ``GenerationRequest`` if present.
+
+    Falls back to our own request object when Phase 1 is not importable (for
+    example in isolation or in tests), so injected callables keep working.
+    """
+    try:
+        from app.services.jobs import (  # type: ignore[import-not-found]
+            GenerationRequest as Phase1GenerationRequest,
+        )
+    except Exception:  # noqa: BLE001 - Phase 1 not installed yet
+        return request
+    return Phase1GenerationRequest(
+        job_description=request.job_description,
+        company=request.company,
+        role=request.role,
+        template=request.template_latex or None,
+        generation_id=request.generation_id,
+        dry_run=False,
+    )
 
 
 @dataclass
@@ -213,7 +299,7 @@ class ServiceAdapter:
         emit = _CallbackShim(progress_callback)
 
         if self.run_generation is not None:
-            result = self.run_generation(request, emit)
+            result = self.run_generation(_build_phase1_request(request), emit)
             return normalize_generation(result)
 
         return self._compose(request, emit)

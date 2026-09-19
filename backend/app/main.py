@@ -19,13 +19,13 @@ from typing import Optional
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import __version__
+from app.core import __version__
 from app.api import generations, health
 from app.core.config import Settings, get_settings
 from app.services.integration import ServiceAdapter, resolve_services
 from app.services.job_runner import GenerationRunner
-from app.services.jobs import JobManager
-from app.services.storage import GenerationStore
+from app.services.job_manager import JobManager
+from app.db import GenerationStore
 
 logger = logging.getLogger(__name__)
 

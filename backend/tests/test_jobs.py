@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.services.jobs import JobManager
+from app.services.job_manager import JobManager
 
 
 async def test_subscribe_replays_history_then_closes():

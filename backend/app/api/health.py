@@ -14,7 +14,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request
 
-from app import __version__
+from app.core import __version__
 from app.api.deps import get_settings, get_store
 from app.schemas.health import HealthCheck, HealthResponse
 

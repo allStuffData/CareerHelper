@@ -153,3 +153,143 @@ def test_adapter_unavailable_raises():
     assert set(adapter.missing) == {"tailor_resume", "compile_latex"}
     with pytest.raises(ServiceIntegrationError):
         adapter.run(_request())
+
+
+# ── real Phase 1 dataclass shapes ─────────────────────────────────────────
+# Phase 1 owns GenerationResult/TailoringResult/ArtifactResult/ProgressEvent
+# in app.services.{jobs,tailoring,latex}. These tests pin the normalisation
+# of their real fields without importing Phase 1 or running an LLM/pdflatex.
+
+
+class _Phase1Artifact:
+    def __init__(self, *, success: bool, pdf=None, tex=None, error=None) -> None:
+        self.generation_id = "gen-1"
+        self.success = success
+        self.filename = "gen-1.pdf" if pdf else None
+        self.pdf_path = pdf
+        self.tex_path = tex
+        self.error = error
+        self.log_tail = ""
+
+
+class _Phase1Tailoring:
+    def __init__(self) -> None:
+        self.latex_source = "\\documentclass{article}"
+        self.raw_response = "```latex\n\\documentclass{article}\n```"
+        self.prompt = "prompt"
+        self.is_valid = True
+        self.validation_errors = []
+        self.provider = "opencode"
+        self.model = "kimi-k3"
+        self.usage = {"prompt_tokens": 11, "completion_tokens": 22}
+
+
+class _Phase1Result:
+    def __init__(self, *, success: bool, artifact, tailoring=None, error=None) -> None:
+        self.generation_id = "gen-1"
+        self.company = "Acme"
+        self.role = "PM"
+        self.success = success
+        self.dry_run = False
+        self.latex_source = "\\documentclass{article}"
+        self.tailoring = tailoring
+        self.artifact = artifact
+        self.tex_path = artifact.tex_path
+        self.error = error
+        self.error_type = None if success else "compilation"
+        self.missing_env_var = None
+
+
+def test_normalize_generation_reads_real_phase1_success_shape(tmp_path):
+    pdf = tmp_path / "gen-1.pdf"
+    tex = tmp_path / "working.tex"
+    artifact = _Phase1Artifact(success=True, pdf=pdf, tex=tex)
+
+    result = normalize_generation(
+        _Phase1Result(success=True, artifact=artifact, tailoring=_Phase1Tailoring())
+    )
+
+    assert result.status == STAGE_COMPLETED
+    assert result.pdf_path == str(pdf)
+    assert result.tex_path == str(tex)
+    assert result.latex == "\\documentclass{article}"
+    assert result.prompt_tokens == 11
+    assert result.completion_tokens == 22
+    assert result.model == "kimi-k3"
+    assert result.error_code is None
+
+
+def test_normalize_generation_reads_real_phase1_failure_shape():
+    artifact = _Phase1Artifact(
+        success=False, error="LaTeX source failed validation"
+    )
+    result = normalize_generation(
+        _Phase1Result(
+            success=False,
+            artifact=artifact,
+            error="LaTeX source failed validation",
+        )
+    )
+    assert result.status == STAGE_FAILED
+    assert result.error_code == "compilation"
+    assert result.pdf_path is None
+    assert "validation" in result.error_message
+
+
+def test_normalize_progress_reads_real_phase1_event_shape():
+    from types import SimpleNamespace
+
+    event = normalize_progress(SimpleNamespace(stage="tailoring", message="working"))
+    assert event is not None
+    assert event.stage == STAGE_CALLING_KIMI
+    assert event.message == "working"
+
+    assert normalize_progress(SimpleNamespace(stage="done")).stage == STAGE_COMPLETED
+    assert (
+        normalize_progress(SimpleNamespace(stage="compilation_failed")).stage
+        == STAGE_FAILED
+    )
+
+
+def test_normalize_artifact_reads_real_phase1_shape(tmp_path):
+    pdf = tmp_path / "gen-1.pdf"
+    artifact = normalize_artifact(
+        _Phase1Artifact(success=True, pdf=pdf, tex=tmp_path / "w.tex")
+    )
+    assert artifact.ok is True
+    assert artifact.pdf_path == str(pdf)
+
+    failed = normalize_artifact(
+        _Phase1Artifact(success=False, error="LaTeX compilation failed (exit 1).")
+    )
+    assert failed.ok is False
+    assert failed.error
+
+
+def test_adapter_builds_phase1_request_when_available(monkeypatch):
+    """When Phase 1's GenerationRequest is importable, the adapter uses it."""
+    import types
+
+    created = {}
+
+    class _Phase1Request:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+            created["request"] = self
+
+    fake_jobs = types.ModuleType("app.services.jobs")
+    fake_jobs.GenerationRequest = _Phase1Request
+
+    import sys
+
+    monkeypatch.setitem(sys.modules, "app.services.jobs", fake_jobs)
+
+    def run_generation(request, progress_callback):
+        return {"success": True, "latex_source": "x", "artifact": None}
+
+    adapter = ServiceAdapter(run_generation=run_generation)
+    adapter.run(_request())
+
+    assert created["request"].company == "Acme"
+    assert created["request"].template == "\\documentclass{article}"
+    assert created["request"].generation_id == "gen-1"

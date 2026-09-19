@@ -36,6 +36,10 @@ GENERATION_STAGES = (
 )
 
 # Map loose/legacy stage names Phase 1 might emit onto the canonical set.
+# The Phase 1 ``run_generation`` (app.services.jobs) emits: tailoring,
+# tailored, tex_written, dry_run, compiling, compiled, compilation_failed,
+# done. Terminal stages are filtered by the job runner, which owns the real
+# terminal event.
 _STAGE_ALIASES = {
     "start": STAGE_QUEUED,
     "starting": STAGE_QUEUED,
@@ -44,15 +48,20 @@ _STAGE_ALIASES = {
     "preparing": STAGE_PREPARING_PROMPT,
     "preparing_prompt": STAGE_PREPARING_PROMPT,
     "extracting_keywords": STAGE_PREPARING_PROMPT,
+    "tailoring": STAGE_CALLING_KIMI,
     "calling_llm": STAGE_CALLING_KIMI,
     "calling_kimi": STAGE_CALLING_KIMI,
     "kimi": STAGE_CALLING_KIMI,
-    "tailoring": STAGE_CALLING_KIMI,
+    "tailored": STAGE_VALIDATING_LATEX,
     "validating": STAGE_VALIDATING_LATEX,
     "validating_latex": STAGE_VALIDATING_LATEX,
+    "tex_written": STAGE_VALIDATING_LATEX,
+    "dry_run": STAGE_VALIDATING_LATEX,
     "compiling": STAGE_COMPILING_PDF,
+    "compiled": STAGE_COMPILING_PDF,
     "compiling_pdf": STAGE_COMPILING_PDF,
     "compiling_latex": STAGE_COMPILING_PDF,
+    "compilation_failed": STAGE_FAILED,
     "done": STAGE_COMPLETED,
     "completed": STAGE_COMPLETED,
     "failed": STAGE_FAILED,

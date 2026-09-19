@@ -26,7 +26,7 @@ from app.contracts import (
 )
 from app.models.generation import Generation, GenerationStage, GenerationStatus
 from app.services.integration import ServiceAdapter, normalize_progress
-from app.services.jobs import JobManager
+from app.services.job_manager import TERMINAL_STAGES, JobManager
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +144,10 @@ class GenerationRunner:
         normalized = normalize_progress(event)
         if normalized is None:
             return
+        # Phase 1 emits "done"/"compilation_failed" itself; the runner is the
+        # single authority on terminal state, so filter those out here.
+        if normalized.stage in TERMINAL_STAGES:
+            return
         stage = normalized.stage
         self.store.update_generation(generation_id, stage=stage)
         self._publish(
@@ -236,6 +240,6 @@ class GenerationRunner:
 
 def from_now() -> str:
     """Local import indirection keeps storage as the timestamp source."""
-    from app.services.storage import utcnow_iso
+    from app.db import utcnow_iso
 
     return utcnow_iso()

@@ -19,8 +19,8 @@ from app.contracts import (
 )
 from app.core.config import Settings
 from app.main import create_app
-from app.services.jobs import JobManager
-from app.services.storage import GenerationStore
+from app.services.job_manager import JobManager
+from app.db import GenerationStore
 
 MINIMAL_TEX = (
     "\\documentclass{article}\n"
