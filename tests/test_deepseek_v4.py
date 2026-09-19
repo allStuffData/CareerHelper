@@ -23,6 +23,9 @@ Setup:
            python test_deepseek_v4_pro.py
 """
 
+# Standalone diagnostic script, not a pytest suite: opt out of collection.
+__test__ = False
+
 import json
 import os
 import sys

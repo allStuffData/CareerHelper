@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+# The OpenCode model diagnostics are standalone scripts, not pytest suites;
+# they require network access and an API key, so keep pytest from importing
+# or collecting them (see also ``__test__ = False`` in each file).
+collect_ignore = ["test_all_opencode_models.py", "test_deepseek_v4.py"]
+
 import time
 from pathlib import Path
 
@@ -109,6 +114,8 @@ def settings(tmp_path: Path) -> Settings:
         resources_dir=resources,
         templates_dir=templates,
         default_template_path=default_template,
+        phase1_output_dir=resources / "output",
+        phase1_workspace_dir=resources / "workspace",
         opencode_go_api_key="test-key",
         llm_model="kimi-k3",
         latex_engine="pdflatex",

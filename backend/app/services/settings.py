@@ -128,9 +128,11 @@ class Settings:
         env_map: Mapping[str, str] = os.environ if env is None else env
         root = Path(project_root) if project_root is not None else _PROJECT_ROOT
 
-        latex_template_dir = root / "LatexTemplate"
-        running_template_dir = root / "RunningTemplate"
-        output_dir = root / "Output"
+        # Repository layout: personal resume assets and generated artifacts
+        # live under resources/ (gitignored except for .gitkeep placeholders).
+        latex_template_dir = root / "resources" / "templates" / "latex"
+        running_template_dir = root / "resources" / "workspace"
+        output_dir = root / "resources" / "output"
 
         provider = env_map.get("LLM_PROVIDER", "opencode").strip() or "opencode"
 

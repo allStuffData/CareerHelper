@@ -13,6 +13,9 @@ Run:
     python test_all_opencode_models.py
 """
 
+# Standalone diagnostic script, not a pytest suite: opt out of collection.
+__test__ = False
+
 import json
 import os
 import sys

@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     default_template_path: Optional[Path] = Field(
         default=_REPO_ROOT / "resources" / "templates" / "latex" / "GopalKumar_Resume.tex"
     )
+    # Phase 1 writes generated artifacts here (see app.services.settings).
+    phase1_output_dir: Path = Field(default=_REPO_ROOT / "resources" / "output")
+    phase1_workspace_dir: Path = Field(default=_REPO_ROOT / "resources" / "workspace")
 
     # ── LaTeX ────────────────────────────────────────────────────────────
     latex_engine: str = "pdflatex"
@@ -62,6 +65,8 @@ class Settings(BaseSettings):
         "resources_dir",
         "templates_dir",
         "default_template_path",
+        "phase1_output_dir",
+        "phase1_workspace_dir",
         mode="before",
     )
     @classmethod
@@ -110,10 +115,19 @@ class Settings(BaseSettings):
 
     @property
     def allowed_artifact_roots(self) -> tuple[Path, ...]:
-        """Directories that generated artifacts are allowed to live in."""
-        roots = {self.artifacts_dir.resolve()}
-        if self.resources_dir is not None:
-            roots.add(self.resources_dir.resolve())
+        """Directories that generated artifacts are allowed to live in.
+
+        Phase 1 stores the compiled PDF under ``resources/output`` and the
+        working ``.tex`` under ``resources/workspace``, so both must be
+        servable alongside the Phase 2 artifacts directory.
+        """
+        candidates = (
+            self.artifacts_dir,
+            self.resources_dir,
+            self.phase1_output_dir,
+            self.phase1_workspace_dir,
+        )
+        roots = {path.resolve() for path in candidates if path is not None}
         return tuple(roots)
 
 
