@@ -151,7 +151,7 @@ def main():
     )
     parser.add_argument(
         "--compile-only", action="store_true",
-        help="Skip LLM tailoring; just compile the current RunningTemplate."
+        help="Skip LLM tailoring; just compile the current working template."
     )
 
     args = parser.parse_args()
@@ -159,7 +159,7 @@ def main():
 
     # ── Compile-only shortcut ────────────────────────────────────────────
     if args.compile_only:
-        print("🔨 Compiling current RunningTemplate...")
+        print("🔨 Compiling current working template...")
         if not settings.working_template.exists():
             print("❌ No working template found to compile.")
             sys.exit(1)

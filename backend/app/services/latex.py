@@ -16,6 +16,9 @@ Security notes:
 
 from __future__ import annotations
 
+import glob
+import os
+import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,6 +29,61 @@ from .settings import Settings, load_settings
 from .storage import store_artifact, write_working_template
 
 _LOG_TAIL_LIMIT = 2000
+
+# Common TeX install locations, searched when the engine is not on PATH.
+_COMMON_ENGINE_DIRS = (
+    "/Library/TeX/texbin",
+    "/opt/homebrew/bin",
+    "/usr/bin",
+)
+# Versioned TeX Live trees (newest first when sorted).
+_ENGINE_GLOBS = ("/usr/local/texlive/*/bin/*",)
+
+
+def resolve_latex_engine(
+    engine: Optional[str] = None,
+    settings: Optional[Settings] = None,
+) -> Optional[str]:
+    """Resolve a LaTeX engine name/path to an executable absolute path.
+
+    ``LATEX_ENGINE`` may be a bare name (``pdflatex``) or an absolute path.
+    Resolution order:
+
+    1. an absolute, executable path is used as-is;
+    2. ``shutil.which`` on ``PATH``;
+    3. common install locations (``/Library/TeX/texbin``,
+       ``/usr/local/texlive/*/bin/*``, ``/opt/homebrew/bin``, ``/usr/bin``).
+
+    Returns ``None`` when no executable can be found. Callers keep their
+    public signatures; this is a shared helper for the compile path and the
+    health check so both report the same resolution.
+    """
+    settings = settings or load_settings()
+    requested = (engine if engine is not None else settings.latex_engine) or ""
+    requested = requested.strip() or "pdflatex"
+
+    candidate = Path(requested)
+    if candidate.is_absolute():
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+        return None
+
+    found = shutil.which(requested)
+    if found:
+        return found
+
+    for directory in _COMMON_ENGINE_DIRS:
+        candidate = Path(directory) / requested
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+
+    for pattern in _ENGINE_GLOBS:
+        for match in sorted(glob.glob(f"{pattern}/{requested}"), reverse=True):
+            if os.access(match, os.X_OK):
+                return match
+
+    return None
+
 
 
 @dataclass
@@ -85,7 +143,9 @@ def compile_latex(
             error=f"Could not write LaTeX source: {exc}",
         )
 
-    engine = settings.latex_engine
+    # Resolve the engine to an absolute executable so installs that are not on
+    # PATH (e.g. TeX Live under /Library/TeX/texbin) still compile.
+    engine = resolve_latex_engine(settings=settings) or settings.latex_engine
     runs = max(1, settings.latex_runs)
     timeout = settings.latex_timeout if settings.latex_timeout > 0 else None
     command = [

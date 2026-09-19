@@ -8,7 +8,6 @@ taking the API down, so the frontend can render diagnostics.
 
 from __future__ import annotations
 
-import shutil
 import tempfile
 from pathlib import Path
 
@@ -17,6 +16,7 @@ from fastapi import APIRouter, Request
 from app.core import __version__
 from app.api.deps import get_settings, get_store
 from app.schemas.health import HealthCheck, HealthResponse
+from app.services.latex import resolve_latex_engine
 
 router = APIRouter(prefix="/api", tags=["system"])
 
@@ -43,14 +43,17 @@ def _check_storage(artifacts_dir: Path) -> HealthCheck:
     return HealthCheck(name="storage", status="ok", detail=str(artifacts_dir))
 
 
-def _check_latex(engine: str) -> HealthCheck:
-    path = shutil.which(engine)
-    if path:
-        return HealthCheck(name="latex", status="ok", detail=path)
+def _check_latex(settings) -> HealthCheck:
+    resolved = resolve_latex_engine(settings=settings)
+    if resolved:
+        return HealthCheck(name="latex", status="ok", detail=resolved)
     return HealthCheck(
         name="latex",
         status="degraded",
-        detail=f"'{engine}' was not found on PATH",
+        detail=(
+            f"'{settings.latex_engine}' was not found on PATH or in common "
+            "TeX install locations"
+        ),
     )
 
 
@@ -72,7 +75,7 @@ def build_health(settings, store) -> HealthResponse:
     checks = [
         _check_database(store),
         _check_storage(settings.artifacts_dir),
-        _check_latex(settings.latex_engine),
+        _check_latex(settings),
         _check_llm(settings),
     ]
     if any(check.status == "error" for check in checks):

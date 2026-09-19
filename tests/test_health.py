@@ -7,8 +7,11 @@ from app.main import create_app
 
 
 def test_health_reports_ok_when_dependencies_present(client, monkeypatch):
+    resolved = "/Library/TeX/texbin/pdflatex"
     monkeypatch.setattr(
-        health_module.shutil, "which", lambda name: "/usr/bin/pdflatex"
+        health_module,
+        "resolve_latex_engine",
+        lambda engine=None, settings=None: resolved,
     )
     response = client.get("/api/health")
     assert response.status_code == 200
@@ -19,11 +22,16 @@ def test_health_reports_ok_when_dependencies_present(client, monkeypatch):
     assert checks["database"]["status"] == "ok"
     assert checks["storage"]["status"] == "ok"
     assert checks["latex"]["status"] == "ok"
+    assert checks["latex"]["detail"] == resolved
     assert checks["llm"]["status"] == "ok"
 
 
 def test_health_degraded_without_pdflatex_or_key(settings, store, jobs, adapter, monkeypatch):
-    monkeypatch.setattr(health_module.shutil, "which", lambda name: None)
+    monkeypatch.setattr(
+        health_module,
+        "resolve_latex_engine",
+        lambda engine=None, settings=None: None,
+    )
     settings.opencode_go_api_key = None
     app = create_app(settings=settings, store=store, jobs=jobs, adapter=adapter)
     from fastapi.testclient import TestClient
