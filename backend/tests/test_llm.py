@@ -4,7 +4,7 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from backend.app.services import llm_client
+from backend.app.services import llm
 from backend.app.services.settings import Settings
 
 
@@ -46,28 +46,28 @@ def fake_openai_client(content="tailored", usage=(3, 5, 8)):
 class MissingKeyTests(unittest.TestCase):
     def test_openai_compatible_missing_key(self):
         settings = make_settings(LLM_PROVIDER="openai")
-        with self.assertRaises(llm_client.MissingAPIKeyError) as ctx:
-            llm_client.call_llm("hi", settings)
+        with self.assertRaises(llm.MissingAPIKeyError) as ctx:
+            llm.call_llm("hi", settings)
         self.assertEqual(ctx.exception.env_var, "OPENAI_API_KEY")
 
     def test_kimi_missing_key(self):
         settings = make_settings(LLM_PROVIDER="kimi")
-        with self.assertRaises(llm_client.MissingAPIKeyError) as ctx:
-            llm_client.call_llm("hi", settings)
+        with self.assertRaises(llm.MissingAPIKeyError) as ctx:
+            llm.call_llm("hi", settings)
         self.assertEqual(ctx.exception.env_var, "KIMI_API_KEY")
 
     def test_opencode_missing_key(self):
         settings = make_settings(LLM_PROVIDER="opencode")
-        with self.assertRaises(llm_client.MissingAPIKeyError) as ctx:
-            llm_client.call_llm("hi", settings)
+        with self.assertRaises(llm.MissingAPIKeyError) as ctx:
+            llm.call_llm("hi", settings)
         self.assertEqual(ctx.exception.env_var, "OPENCODE_GO_API_KEY")
 
 
 class UnsupportedProviderTests(unittest.TestCase):
     def test_unknown_provider_raises(self):
         settings = make_settings(LLM_PROVIDER="mystery")
-        with self.assertRaises(llm_client.UnsupportedProviderError):
-            llm_client.call_llm("hi", settings)
+        with self.assertRaises(llm.UnsupportedProviderError):
+            llm.call_llm("hi", settings)
 
 
 class OpenAICompatibleTests(unittest.TestCase):
@@ -79,9 +79,9 @@ class OpenAICompatibleTests(unittest.TestCase):
         )
         client, completions = fake_openai_client(content="tailored tex")
         with mock.patch.object(
-            llm_client, "_build_openai_client", return_value=client
+            llm, "_build_openai_client", return_value=client
         ) as builder:
-            response = llm_client.call_llm("prompt text", settings)
+            response = llm.call_llm("prompt text", settings)
 
         self.assertEqual(response.content, "tailored tex")
         self.assertEqual(response.provider, "kimi")
@@ -103,9 +103,9 @@ class OpenAICompatibleTests(unittest.TestCase):
         )
         client, completions = fake_openai_client()
         with mock.patch.object(
-            llm_client, "_build_openai_client", return_value=client
+            llm, "_build_openai_client", return_value=client
         ):
-            llm_client.call_llm("hi", settings, system_prompt="CUSTOM SYSTEM")
+            llm.call_llm("hi", settings, system_prompt="CUSTOM SYSTEM")
 
         self.assertEqual(
             completions.calls[0]["messages"][0]["content"], "CUSTOM SYSTEM"

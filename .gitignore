@@ -2,6 +2,13 @@
 Output/*.pdf
 RunningTemplate/*.pdf
 
+# LLM debug dumps (may contain resume / job-description content)
+RunningTemplate/_debug_llm_response.txt
+*_debug_llm_response.txt
+
+# Generated service artifacts
+backend/.generations/
+
 # LaTeX build artifacts
 *.aux
 *.log

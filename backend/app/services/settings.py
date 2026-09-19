@@ -86,6 +86,7 @@ class Settings:
 
     latex_engine: str
     latex_runs: int
+    latex_timeout: int
 
     # ── Provider helpers ────────────────────────────────────────────────
 
@@ -165,6 +166,7 @@ class Settings:
             anthropic_api_key=env_map.get("ANTHROPIC_API_KEY", ""),
             latex_engine=env_map.get("LATEX_ENGINE", "pdflatex"),
             latex_runs=_as_int(env_map.get("LATEX_RUNS"), 2),
+            latex_timeout=_as_int(env_map.get("LATEX_TIMEOUT"), 60),
         )
 
 

@@ -43,11 +43,23 @@ def extract_latex_from_response(response: str) -> str:
     return response.strip()
 
 
+def _first_content_line(tex: str) -> str:
+    """Return the first non-blank, non-comment line (comments start with %)."""
+    for line in tex.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("%"):
+            continue
+        return stripped
+    return ""
+
+
 def validate_latex(tex: str) -> List[str]:
     """Return a list of human-readable issues with ``tex`` (empty if valid).
 
     This is a lightweight structural check, not a full LaTeX parse: it catches
     the common failure mode where the LLM returns prose or a truncated file.
+    Leading comments (including the template's ``% ===`` section anchors) and
+    blank lines are ignored when looking for ``\\documentclass``.
     """
     issues: List[str] = []
     stripped = tex.strip()
@@ -56,7 +68,8 @@ def validate_latex(tex: str) -> List[str]:
         issues.append("LaTeX output is empty.")
         return issues
 
-    if not stripped.startswith(_DOCUMENT_START):
+    first_line = _first_content_line(tex)
+    if not first_line.startswith(_DOCUMENT_START):
         issues.append(
             r"LaTeX output does not start with \documentclass."
         )

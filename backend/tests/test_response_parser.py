@@ -68,6 +68,17 @@ class ValidateLatexTests(unittest.TestCase):
         self.assertTrue(any("end{document}" in issue for issue in issues))
         self.assertFalse(is_latex_document(tex))
 
+    def test_leading_comments_are_allowed(self):
+        tex = (
+            "% =============================================================================\n"
+            "%  Gopal Kumar — Base LaTeX Resume Template\n"
+            "% =============================================================================\n"
+            "\n"
+            + VALID_TEX
+        )
+        self.assertEqual(validate_latex(tex), [])
+        self.assertTrue(is_latex_document(tex))
+
 
 if __name__ == "__main__":
     unittest.main()

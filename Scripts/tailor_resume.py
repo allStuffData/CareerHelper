@@ -25,14 +25,14 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from backend.app.services.latex import (
-    LatexCompilationError,
-    compile_latex,
-    write_working_template,
+from backend.app.services.jobs import (
+    GenerationRequest,
+    ProgressEvent,
+    run_generation,
 )
-from backend.app.services.llm_client import LLMError, MissingAPIKeyError
-from backend.app.services.pipeline import tailor
+from backend.app.services.latex import compile_latex
 from backend.app.services.settings import load_settings
+from backend.app.services.storage import build_generation_id
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -63,11 +63,56 @@ def read_multiline(prompt: str) -> str:
     return "\n".join(lines).strip()
 
 
-def _print_compilation_error(error: LatexCompilationError) -> None:
-    if error.log_tail:
-        print(f"\n⚠️  LaTeX compilation failed. Log tail:\n{error.log_tail}")
+def _print_compilation_error(error: str, log_tail: str) -> None:
+    if log_tail:
+        print(f"\n⚠️  LaTeX compilation failed. Log tail:\n{log_tail}")
     else:
         print(f"\n⚠️  LaTeX compilation failed:\n{error}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PROGRESS RENDERING
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _make_progress_renderer(settings):
+    """Return a callback that renders service progress like the old CLI."""
+
+    def render(event: ProgressEvent) -> None:
+        if event.stage == "tailored":
+            tailoring = event.tailoring
+            if tailoring and tailoring.usage:
+                usage = tailoring.usage
+                print(
+                    f"   Tokens: prompt={usage['prompt_tokens']}, "
+                    f"completion={usage['completion_tokens']}, "
+                    f"total={usage['total_tokens']}"
+                )
+            if tailoring and not tailoring.is_valid:
+                print(
+                    "⚠️  LLM output doesn't look like a complete LaTeX document "
+                    f"({'; '.join(tailoring.validation_errors)}). "
+                    "Saving raw response for inspection..."
+                )
+                settings.running_template_dir.mkdir(parents=True, exist_ok=True)
+                debug_path = (
+                    settings.running_template_dir / "_debug_llm_response.txt"
+                )
+                debug_path.write_text(tailoring.raw_response)
+                print(f"   Debug output saved to: {debug_path}")
+        elif event.stage == "tex_written":
+            print(f"📝 Tailored .tex written to: {event.path}")
+        elif event.stage == "compiling":
+            print(f"🔨 Compiling with {settings.latex_engine}...")
+        elif event.stage == "compiled" and event.artifact:
+            print(f"✅ PDF saved to: {event.artifact.pdf_path}")
+        elif event.stage == "compilation_failed" and event.artifact:
+            _print_compilation_error(
+                event.artifact.error or "", event.artifact.log_tail
+            )
+        elif event.stage == "dry_run":
+            print("🏁 Dry run complete. No PDF generated.")
+
+    return render
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -115,19 +160,20 @@ def main():
     # ── Compile-only shortcut ────────────────────────────────────────────
     if args.compile_only:
         print("🔨 Compiling current RunningTemplate...")
-        if settings.working_template.exists():
-            try:
-                compile_latex(
-                    settings.working_template,
-                    args.company or "Resume",
-                    args.role or "Default",
-                    settings=settings,
-                )
-            except LatexCompilationError as error:
-                _print_compilation_error(error)
-        else:
+        if not settings.working_template.exists():
             print("❌ No working template found to compile.")
             sys.exit(1)
+        generation_id = build_generation_id(
+            args.company or "Resume", args.role or "Default"
+        )
+        source = settings.working_template.read_text(encoding="utf-8")
+        artifact = compile_latex(source, generation_id, settings=settings)
+        if artifact.success:
+            print(f"✅ PDF saved to: {artifact.pdf_path}")
+        else:
+            _print_compilation_error(
+                artifact.error or "", artifact.log_tail
+            )
         return
 
     # ── Interactive prompts (only when flags not provided) ───────────────
@@ -173,60 +219,30 @@ def main():
             sys.exit(1)
         print(f"   ({len(job_description)} characters received)")
 
-    # ── Step 1: LLM tailoring ───────────────────────────────────────────
+    # ── Step 1 & 2: tailor and compile via reusable services ─────────────
     print(f"\n📋 Tailoring resume for {role} at {company}...")
     print(f"   Provider: {settings.llm_provider}  |  Model: {settings.llm_model}")
 
-    try:
-        result = tailor(job_description, company, role, settings=settings)
-    except MissingAPIKeyError as error:
-        print(f"❌ {error}")
-        print(f"   Make sure your .env file has: {error.env_var}=...")
+    request = GenerationRequest(
+        job_description=job_description,
+        company=company,
+        role=role,
+        dry_run=args.dry_run,
+        settings=settings,
+    )
+    result = run_generation(
+        request, progress_callback=_make_progress_renderer(settings)
+    )
+
+    if result.error_type == "llm":
+        print(f"❌ {result.error}")
+        if result.missing_env_var:
+            print(f"   Make sure your .env file has: {result.missing_env_var}=...")
         sys.exit(1)
-    except LLMError as error:
-        print(f"❌ {error}")
-        sys.exit(1)
 
-    if result.usage:
-        print(
-            f"   Tokens: prompt={result.usage['prompt_tokens']}, "
-            f"completion={result.usage['completion_tokens']}, "
-            f"total={result.usage['total_tokens']}"
-        )
-
-    tailored_tex = result.tex_content
-
-    # Validate the output looks like LaTeX
-    if not result.is_valid_latex:
-        print(
-            "⚠️  LLM output doesn't look like a complete LaTeX document "
-            f"({'; '.join(result.validation_issues)}). "
-            "Saving raw response for inspection..."
-        )
-        settings.running_template_dir.mkdir(parents=True, exist_ok=True)
-        debug_path = settings.running_template_dir / "_debug_llm_response.txt"
-        debug_path.write_text(result.raw_response)
-        print(f"   Debug output saved to: {debug_path}")
-
-    # Save to RunningTemplate
-    write_working_template(tailored_tex, settings.working_template)
-    print(f"📝 Tailored .tex written to: {settings.working_template}")
-
-    # ── Step 2: Compile to PDF ──────────────────────────────────────────
-    if not args.dry_run:
-        if settings.working_template.exists():
-            print(f"🔨 Compiling with {settings.latex_engine}...")
-            try:
-                compile_latex(
-                    settings.working_template, company, role, settings=settings
-                )
-            except LatexCompilationError as error:
-                _print_compilation_error(error)
-        else:
-            print("❌ No working template found to compile.")
-            sys.exit(1)
-    else:
-        print("🏁 Dry run complete. No PDF generated.")
+    if result.error_type == "compilation":
+        # Warning already rendered by the progress callback.
+        return
 
 
 if __name__ == "__main__":
