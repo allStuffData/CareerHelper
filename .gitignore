@@ -23,6 +23,15 @@ backend/.generations/
 # Python
 __pycache__/
 *.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+
+# Backend local runtime data (SQLite, generated artifacts)
+backend/data/
+backend/*.db
+backend/*.db-*
 
 # Rust build output and local runtime data
 target/
