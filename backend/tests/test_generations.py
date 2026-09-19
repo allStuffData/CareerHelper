@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import unquote
 
 from fastapi.testclient import TestClient
 
@@ -39,10 +40,40 @@ def test_create_generation_completes_and_downloads(client):
     assert pdf.headers["content-type"] == "application/pdf"
     assert pdf.content.startswith(b"%PDF")
     assert "attachment" in pdf.headers["content-disposition"]
+    assert f"{generation_id}.pdf" in unquote(
+        pdf.headers["content-disposition"]
+    )
 
     tex = client.get(completed["tex_url"])
     assert tex.status_code == 200
     assert "documentclass" in tex.text
+    assert f"{generation_id}.tex" in unquote(
+        tex.headers["content-disposition"]
+    )
+
+
+def test_generation_id_follows_phase1_naming_contract(client):
+    from app.services.integration import build_generation_id
+
+    response = client.post("/api/generations", json=PAYLOAD)
+    generation_id = response.json()["id"]
+
+    assert generation_id == build_generation_id(
+        PAYLOAD["company"], PAYLOAD["role"]
+    )
+    assert generation_id.startswith("GopalKumar_")
+    assert "Stripe" in generation_id
+
+
+def test_duplicate_same_day_request_is_disambiguated(client):
+    first = client.post("/api/generations", json=PAYLOAD).json()["id"]
+    second = client.post("/api/generations", json=PAYLOAD).json()["id"]
+
+    assert first != second
+    assert second == f"{first}-2"
+    # Both are persisted and addressable independently.
+    assert client.get(f"/api/generations/{first}").status_code == 200
+    assert client.get(f"/api/generations/{second}").status_code == 200
 
 
 def test_create_generation_failure_is_recorded(client, adapter, settings):
@@ -66,7 +97,7 @@ def test_events_stream_reports_progress(client):
     response = client.post("/api/generations", json=PAYLOAD)
     generation_id = response.json()["id"]
 
-    stages: list[str] = []
+    events = []
     with client.stream(
         "GET", f"/api/generations/{generation_id}/events"
     ) as stream:
@@ -75,13 +106,20 @@ def test_events_stream_reports_progress(client):
             if not line.startswith("data:"):
                 continue
             event = json.loads(line[len("data:") :].strip())
-            stages.append(event["stage"])
+            events.append(event)
             if event["stage"] in ("completed", "failed"):
                 break
 
+    stages = [event["stage"] for event in events]
     assert stages[0] == "queued"
     assert "calling_kimi" in stages
     assert stages[-1] == "completed"
+
+    terminal = events[-1]
+    assert terminal["generation_id"] == generation_id
+    assert terminal["status"] == "completed"
+    assert terminal["pdf_filename"] == f"{generation_id}.pdf"
+    assert terminal["tex_filename"] == f"{generation_id}.tex"
 
 
 def test_list_generations(client):

@@ -18,6 +18,8 @@ from app.contracts import (
 from app.services.integration import (
     ServiceAdapter,
     ServiceIntegrationError,
+    artifact_filename,
+    build_generation_id,
     normalize_artifact,
     normalize_generation,
     normalize_progress,
@@ -153,6 +155,33 @@ def test_adapter_unavailable_raises():
     assert set(adapter.missing) == {"tailor_resume", "compile_latex"}
     with pytest.raises(ServiceIntegrationError):
         adapter.run(_request())
+
+
+# ── generation id / artifact filename contract ────────────────────────────
+def test_build_generation_id_uses_company_and_role():
+    from datetime import datetime
+
+    gid = build_generation_id("Stripe", "TPM")
+    assert gid.startswith("GopalKumar_Stripe_TPM_")
+    assert gid == build_generation_id("Stripe", "TPM")  # deterministic same day
+
+    from app.services.integration import _fallback_generation_id
+
+    assert _fallback_generation_id("Acme", "PM", when=datetime(2026, 1, 2)) == (
+        "GopalKumar_Acme_PM_20260102"
+    )
+
+
+def test_artifact_filename_prefers_stored_path_generation_id(tmp_path):
+    pdf = tmp_path / "GopalKumar_Acme_PM_20260102.pdf"
+    assert (
+        artifact_filename(pdf, "GopalKumar_Acme_PM_20260102", "pdf")
+        == "GopalKumar_Acme_PM_20260102.pdf"
+    )
+    # Falls back to the generation id when no stored path is available.
+    assert artifact_filename(None, "GopalKumar_Acme_PM_20260102", "pdf") == (
+        "GopalKumar_Acme_PM_20260102.pdf"
+    )
 
 
 # ── real Phase 1 dataclass shapes ─────────────────────────────────────────

@@ -57,6 +57,10 @@ _COMPILE_LATEX_MODULES = (
     "app.services.latex",
     "app.services",
 )
+_BUILD_GENERATION_ID_MODULES = (
+    "app.services.storage",
+    "app.services",
+)
 
 
 class ServiceIntegrationError(RuntimeError):
@@ -73,6 +77,57 @@ def _resolve(modules: tuple[str, ...], attribute: str) -> Optional[Callable]:
         if callable(func):
             return func
     return None
+
+
+def build_generation_id(company: str, role: str, when: Any = None) -> str:
+    """Return the canonical, legacy-compatible generation id.
+
+    Phase 1 owns this naming contract via
+    ``app.services.storage.build_generation_id(company, role)``. The API must
+    use its output verbatim for persistence, artifact paths, download
+    responses, and SSE metadata -- it must never invent an id or filename.
+
+    A compatibility shim reproduces the documented
+    ``GopalKumar_<company>_<role>_<YYYYMMDD>`` shape only when Phase 1 is not
+    importable (for example in an isolated worktree or the test suite).
+    """
+    builder = _resolve(_BUILD_GENERATION_ID_MODULES, "build_generation_id")
+    if builder is not None:
+        try:
+            return builder(company, role)
+        except TypeError:
+            return builder(company, role, when=when)
+    return _fallback_generation_id(company, role, when)
+
+
+def _sanitize_component(value: str, max_length: int = 30) -> str:
+    import re
+
+    cleaned = re.sub(r"[^a-zA-Z0-9_\- ]", "", value or "")
+    return cleaned[:max_length].strip()
+
+
+def _fallback_generation_id(company: str, role: str, when: Any = None) -> str:
+    from datetime import datetime
+
+    date_str = (when or datetime.now()).strftime("%Y%m%d")
+    return (
+        f"GopalKumar_{_sanitize_component(company)}_"
+        f"{_sanitize_component(role)}_{date_str}"
+    )
+
+
+def artifact_filename(path: Any, generation_id: str, extension: str) -> str:
+    """Return the artifact's server-generated filename.
+
+    Prefers the actual stored path name (which Phase 1 already derived from the
+    generation id), so the API never recomputes filenames from company/role.
+    """
+    if path:
+        name = Path(str(path)).name
+        if name:
+            return name
+    return f"{generation_id}.{extension.lstrip('.')}"
 
 
 def _field(source: Any, *names: str, default: Any = None) -> Any:

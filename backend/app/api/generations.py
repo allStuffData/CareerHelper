@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import uuid
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -19,6 +18,7 @@ from app.schemas.generation import (
     GenerationListResponse,
     GenerationResponse,
 )
+from app.services.integration import artifact_filename, build_generation_id
 
 router = APIRouter(prefix="/api/generations", tags=["generations"])
 logger = logging.getLogger(__name__)
@@ -63,14 +63,21 @@ def _get_or_404(store, generation_id: str) -> Generation:
     return generation
 
 
-def _safe_filename(generation: Generation, suffix: str) -> str:
-    def _clean(value: str) -> str:
-        cleaned = "".join(
-            ch for ch in value if ch.isalnum() or ch in (" ", "-", "_")
-        ).strip()
-        return cleaned.replace(" ", "_")[:40] or "resume"
+def _unique_generation_id(store, base_id: str) -> str:
+    """Return ``base_id`` or a disambiguated sibling for same-day collisions.
 
-    return f"GopalKumar_{_clean(generation.company)}_{_clean(generation.role)}{suffix}"
+    Phase 1's ``build_generation_id`` is deterministic per company/role/day, so
+    two requests can share it. Persistence needs a unique key; the canonical id
+    is kept as-is for the common case and only suffixed on a real collision.
+    """
+    if store.get_generation(base_id) is None:
+        return base_id
+    suffix = 2
+    while True:
+        candidate = f"{base_id}-{suffix}"
+        if store.get_generation(candidate) is None:
+            return candidate
+        suffix += 1
 
 
 def _resolve_artifact(path_str: str, settings) -> Path:
@@ -109,8 +116,11 @@ async def create_generation(
                 ),
             )
 
+    generation_id = _unique_generation_id(
+        store, build_generation_id(payload.company, payload.role)
+    )
     generation = Generation(
-        id=uuid.uuid4().hex,
+        id=generation_id,
         company=payload.company,
         role=payload.role,
         job_description=payload.job_description,
@@ -175,7 +185,7 @@ def _terminal_snapshot(generation: Generation) -> dict:
         if generation.status == GenerationStatus.COMPLETED
         else STAGE_FAILED
     )
-    return {
+    event = {
         "generation_id": generation.id,
         "status": generation.status.value,
         "stage": stage,
@@ -185,6 +195,13 @@ def _terminal_snapshot(generation: Generation) -> dict:
         "error_message": generation.error_message,
         "timestamp": generation.completed_at,
     }
+    if generation.pdf_path:
+        event["pdf_path"] = generation.pdf_path
+        event["pdf_filename"] = Path(generation.pdf_path).name
+    if generation.tex_path:
+        event["tex_path"] = generation.tex_path
+        event["tex_filename"] = Path(generation.tex_path).name
+    return event
 
 
 def _sse(event: dict) -> str:
@@ -203,7 +220,7 @@ def download_pdf(generation_id: str, request: Request) -> FileResponse:
     return FileResponse(
         path,
         media_type="application/pdf",
-        filename=_safe_filename(generation, ".pdf"),
+        filename=artifact_filename(generation.pdf_path, generation.id, "pdf"),
     )
 
 
@@ -219,7 +236,7 @@ def download_tex(generation_id: str, request: Request) -> FileResponse:
     return FileResponse(
         path,
         media_type="application/x-tex",
-        filename=_safe_filename(generation, ".tex"),
+        filename=artifact_filename(generation.tex_path, generation.id, "tex"),
     )
 
 

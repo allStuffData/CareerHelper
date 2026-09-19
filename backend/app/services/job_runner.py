@@ -168,20 +168,26 @@ class GenerationRunner:
         percent: Optional[int] = None,
         error_code: Optional[str] = None,
         error_message: Optional[str] = None,
+        pdf_path: Optional[str] = None,
+        tex_path: Optional[str] = None,
     ) -> None:
-        self.jobs.publish(
-            generation_id,
-            {
-                "generation_id": generation_id,
-                "status": status.value,
-                "stage": stage,
-                "message": message,
-                "percent": percent if percent is not None else STAGE_PERCENT.get(stage),
-                "error_code": error_code,
-                "error_message": error_message,
-                "timestamp": from_now(),
-            },
-        )
+        event = {
+            "generation_id": generation_id,
+            "status": status.value,
+            "stage": stage,
+            "message": message,
+            "percent": percent if percent is not None else STAGE_PERCENT.get(stage),
+            "error_code": error_code,
+            "error_message": error_message,
+            "timestamp": from_now(),
+        }
+        if pdf_path:
+            event["pdf_path"] = pdf_path
+            event["pdf_filename"] = Path(pdf_path).name
+        if tex_path:
+            event["tex_path"] = tex_path
+            event["tex_filename"] = Path(tex_path).name
+        self.jobs.publish(generation_id, event)
 
     # ── terminals ────────────────────────────────────────────────────────
     def _complete(self, generation_id: str, result: GenerationResult) -> None:
@@ -201,6 +207,8 @@ class GenerationRunner:
             STAGE_COMPLETED,
             status=GenerationStatus.COMPLETED,
             message="Completed",
+            pdf_path=result.pdf_path,
+            tex_path=result.tex_path,
         )
 
     def _fail(
