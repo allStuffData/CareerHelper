@@ -145,9 +145,16 @@ class RunGenerationTests(unittest.TestCase):
             self.assertFalse(result.artifact.success)
             self.assertIn("compilation_failed", [e.stage for e in events])
 
-    def test_invalid_llm_output_still_written_but_compilation_rejected(self):
+    def test_unusable_llm_output_fails_at_the_tailoring_stage(self):
+        """Unparseable completions are a tailoring failure, not a compile one.
+
+        Regression: this used to be written to disk and then rejected by the
+        LaTeX validator, so the run reported ``compilation`` and pointed the
+        operator at pdflatex while the real cause was the model's output.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             settings = make_settings(Path(tmp))
+            events = []
             request = GenerationRequest(
                 job_description="jd",
                 company="Acme",
@@ -158,12 +165,50 @@ class RunGenerationTests(unittest.TestCase):
                     content="not latex", provider="opencode", model="fake"
                 ),
             )
+            with mock.patch.object(latex.subprocess, "run") as fake_run:
+                result = run_generation(request, progress_callback=events.append)
+
+            self.assertFalse(result.success)
+            self.assertEqual(result.error_type, "tailoring")
+            self.assertIsNone(result.artifact)
+            self.assertIsNone(result.tex_path)
+            # Rejected output must never reach the compiler or the disk, and
+            # the stage sequence has to stop before compiling.
+            fake_run.assert_not_called()
+            stages = [event.stage for event in events]
+            self.assertIn("tailoring_failed", stages)
+            self.assertIn("done", stages)
+            self.assertNotIn("tex_written", stages)
+            self.assertNotIn("compiling", stages)
+
+    def test_truncated_llm_output_names_the_token_limit(self):
+        """A completion cut off by the token cap is reported as ``truncated``.
+
+        This is the live failure mode that produced 8000-token completions
+        labeled as compiler errors.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = make_settings(Path(tmp))
+            request = GenerationRequest(
+                job_description="jd",
+                company="Acme",
+                role="PM",
+                template=BASE_TEX,
+                settings=settings,
+                llm_caller=lambda prompt, cfg: LLMResponse(
+                    content="\\documentclass{article}\nHalf a document",
+                    provider="opencode",
+                    model="fake",
+                    finish_reason="length",
+                ),
+            )
             result = run_generation(request)
 
             self.assertFalse(result.success)
-            self.assertFalse(result.artifact.success)
-            self.assertIn("validation", result.artifact.error)
-            self.assertTrue(result.tex_path.exists())
+            self.assertEqual(result.error_type, "truncated")
+            self.assertIn("finish_reason='length'", result.error)
+            self.assertIn(str(settings.llm_max_tokens), result.error)
+            self.assertIsNone(result.artifact)
 
 
 if __name__ == "__main__":

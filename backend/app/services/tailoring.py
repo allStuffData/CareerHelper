@@ -35,6 +35,18 @@ class TailoringResult:
     provider: str = ""
     model: str = ""
     usage: Optional[Dict[str, int]] = None
+    finish_reason: Optional[str] = None
+
+    @property
+    def was_truncated(self) -> bool:
+        """True when the provider stopped at the output-token limit.
+
+        ``finish_reason='length'`` means the completion was cut off, so an
+        unusable ``latex_source`` is a token-budget problem rather than a
+        prompt or model-quality problem. Callers use this to report the right
+        failure instead of blaming the LaTeX compile step.
+        """
+        return self.finish_reason == "length"
 
     @property
     def is_valid_latex(self) -> bool:
@@ -75,4 +87,5 @@ def tailor_resume(
         provider=response.provider,
         model=response.model,
         usage=response.usage,
+        finish_reason=response.finish_reason,
     )

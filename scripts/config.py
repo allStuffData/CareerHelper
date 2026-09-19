@@ -55,7 +55,7 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 # ── LLM parameters ─────────────────────────────────────────────────────────
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "1.0"))
-LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "8000"))
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "32000"))
 
 # ── Section Tags (used as anchors for targeted editing) ───────────────────
 SECTION_MARKERS = {

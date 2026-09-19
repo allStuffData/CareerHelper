@@ -149,16 +149,22 @@ python3 tests/test_all_opencode_models.py
 
 ## Model configuration
 
-The default model is `deepseek-v4-pro` through the OpenCode Go Chat Completions endpoint. The client sends the required stable `x-opencode-session` header and uses `temperature=1.0`.
+The default model is `deepseek-v4-pro` through the OpenCode Go Chat Completions endpoint, with `temperature=0.3` and `max_tokens=32000`. The client sends the required stable `x-opencode-session` header.
 
 Environment variables can override the defaults:
 
 ```text
 LLM_MODEL=deepseek-v4-pro
-LLM_TEMPERATURE=1.0
-LLM_MAX_TOKENS=8000
+LLM_TEMPERATURE=0.3
+LLM_MAX_TOKENS=32000
 OPENCODE_GO_BASE_URL=https://opencode.ai/zen/go/v1
 ```
+
+The output-token budget matters: a full tailored resume runs to roughly 7–8k
+tokens, so setting `LLM_MAX_TOKENS` too low truncates the LaTeX mid-document.
+When the model stops at the limit, the generation fails with
+`error_code=truncated` and names the limit, instead of being misreported as a
+LaTeX compile error.
 
 ## Git and private files
 

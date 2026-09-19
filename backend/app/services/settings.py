@@ -152,7 +152,7 @@ class Settings:
             llm_provider=provider,
             llm_model=model,
             llm_temperature=_as_float(env_map.get("LLM_TEMPERATURE"), 0.3),
-            llm_max_tokens=_as_int(env_map.get("LLM_MAX_TOKENS"), 8000),
+            llm_max_tokens=_as_int(env_map.get("LLM_MAX_TOKENS"), 32000),
             opencode_api_key=env_map.get("OPENCODE_GO_API_KEY", ""),
             opencode_base_url=env_map.get(
                 "OPENCODE_GO_BASE_URL", "https://opencode.ai/zen/go/v1"

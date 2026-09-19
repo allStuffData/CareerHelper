@@ -79,6 +79,30 @@ def _noop(_event: ProgressEvent) -> None:
     return None
 
 
+def _unusable_tailoring(
+    tailoring: TailoringResult, settings: Settings
+) -> tuple[str, str]:
+    """Classify an unusable tailoring result as an LLM-stage failure.
+
+    A truncated or unparseable completion used to be written to disk and then
+    rejected by the LaTeX validator, which reported ``error_type='compilation'``
+    — pointing the operator at pdflatex while the real cause was the model's
+    output-token cap. Report it against the tailoring stage instead, and name
+    the token limit when that is what ran out.
+
+    Returns the ``(error_type, message)`` pair. Only structural validation
+    messages are included; no prompt or resume content is ever echoed.
+    """
+    details = "; ".join(tailoring.validation_errors) or "no usable LaTeX returned"
+    if tailoring.was_truncated:
+        return "truncated", (
+            "The model stopped at the output-token limit "
+            f"(finish_reason='length', LLM_MAX_TOKENS={settings.llm_max_tokens}) "
+            f"before it finished the LaTeX: {details}"
+        )
+    return "tailoring", f"The model returned unusable LaTeX: {details}"
+
+
 def run_generation(
     request: GenerationRequest,
     progress_callback: Optional[ProgressCallback] = None,
@@ -86,9 +110,10 @@ def run_generation(
     """Run tailoring + compilation for ``request`` and return the result.
 
     Raises nothing for expected LLM/compilation failures: configuration errors
-    (missing key, unsupported provider) are reported via ``error_type='llm'``
-    and compilation failures via ``error_type='compilation'`` plus the
-    :class:`ArtifactResult`.
+    (missing key, unsupported provider) are reported via ``error_type='llm'``,
+    unusable or truncated model output via ``error_type='tailoring'`` /
+    ``'truncated'``, and compilation failures via ``error_type='compilation'``
+    plus the :class:`ArtifactResult`.
     """
     emit = progress_callback or _noop
     settings = request.settings or load_settings()
@@ -125,6 +150,25 @@ def run_generation(
         )
 
     emit(ProgressEvent(stage="tailored", tailoring=tailoring))
+
+    if not tailoring.is_valid:
+        # Do not overwrite the last good working template with source that
+        # cannot compile, and do not spend a pdflatex run on it. ``validate_latex``
+        # is already a precondition of ``compile_latex``, so no source that
+        # could have compiled is rejected here.
+        error_type, message = _unusable_tailoring(tailoring, settings)
+        emit(ProgressEvent(stage="tailoring_failed", message=message))
+        emit(ProgressEvent(stage="done", message=message))
+        return GenerationResult(
+            generation_id=generation_id,
+            company=request.company,
+            role=request.role,
+            success=False,
+            latex_source=tailoring.latex_source,
+            tailoring=tailoring,
+            error=message,
+            error_type=error_type,
+        )
 
     tex_path = write_working_template(tailoring.latex_source, settings.working_template)
     emit(ProgressEvent(stage="tex_written", path=tex_path))

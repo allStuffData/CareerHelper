@@ -88,8 +88,13 @@ def _make_progress_renderer(settings):
                     f"total={usage['total_tokens']}"
                 )
             if tailoring and not tailoring.is_valid:
+                reason = (
+                    "the model hit the output-token limit"
+                    if tailoring.was_truncated
+                    else "the response was not a complete LaTeX document"
+                )
                 print(
-                    "⚠️  LLM output doesn't look like a complete LaTeX document "
+                    f"⚠️  LLM output can't be compiled — {reason} "
                     f"({'; '.join(tailoring.validation_errors)}). "
                     "Saving raw response for inspection..."
                 )
@@ -234,7 +239,9 @@ def main():
         request, progress_callback=_make_progress_renderer(settings)
     )
 
-    if result.error_type == "llm":
+    if result.error_type and result.error_type != "compilation":
+        # llm / tailoring / truncated: the progress callback may have printed
+        # detail, but the run still failed and must not exit 0.
         print(f"❌ {result.error}")
         if result.missing_env_var:
             print(f"   Make sure your .env file has: {result.missing_env_var}=...")
