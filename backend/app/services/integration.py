@@ -42,10 +42,12 @@ from app.contracts import (
 )
 
 # Candidate module paths searched for each Phase 1 callable, in priority
-# order. ``app.services`` is the package re-export surface defined by Phase 1.
+# order. Phase 1 commit 63d3a10 implements ``run_generation`` in
+# ``app.services.jobs`` (the earlier ``pipeline.py`` orchestrator was folded
+# into it); ``app.services`` is the package re-export surface. There is no
+# ``app.services.generation`` module, so it is deliberately not searched.
 _RUN_GENERATION_MODULES = (
     "app.services.jobs",
-    "app.services.generation",
     "app.services.pipeline",
     "app.services",
 )
