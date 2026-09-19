@@ -1,8 +1,47 @@
 # CareerHelper — Job-Tailored Resume Generator
 
-CareerHelper takes a canonical LaTeX resume and a target job description, asks Kimi K3 to tailor the resume toward that role, then compiles the result into a PDF.
+CareerHelper takes a canonical LaTeX resume and a target job description, asks an LLM (DeepSeek V4 Pro via OpenCode Go by default) to tailor the resume toward that role, then compiles the result into a PDF.
 
 The tailoring prompt tells the model to extract job keywords, map them to existing experience, rewrite and reorder bullets, select the most relevant projects, and preserve factual accuracy. It must not change employers, titles, dates, degrees, awards, or invent experience.
+
+## Web app (FastAPI + Next.js)
+
+The browser talks only to Next.js; the FastAPI base URL and the API key stay server-side.
+
+```bash
+# 1. Python + frontend dependencies (once)
+python3 -m venv .venv
+.venv/bin/pip install -e "backend[dev]"
+(cd frontend && npm install)
+
+# 2. Configure the project-root .env (gitignored)
+#    OPENCODE_GO_API_KEY=...
+#    LLM_PROVIDER=opencode        # optional
+#    LLM_MODEL=deepseek-v4-pro    # optional
+
+# 3. Put the canonical resume at
+#    resources/templates/latex/GopalKumar_Resume.tex
+
+# 4. Run both servers, then open http://localhost:3000
+scripts/dev.sh
+```
+
+Run each server by hand instead:
+
+```bash
+# FastAPI on :8000
+cd backend && ../.venv/bin/uvicorn app.main:app --reload --port 8000
+
+# Next.js on :3000 (reads FASTAPI_BASE_URL server-side only)
+cd frontend && FASTAPI_BASE_URL=http://127.0.0.1:8000 npm run dev
+```
+
+Backend tests and frontend checks:
+
+```bash
+.venv/bin/python -m pytest tests backend/tests -q
+cd frontend && npm run typecheck && npm run lint && npm run build
+```
 
 ## How the pipeline works
 
@@ -25,7 +64,7 @@ Canonical LaTeX resume + job description
         resources/output/*.pdf
 ```
 
-The working implementation is the Python pipeline. The Rust application in `web/` is an unfinished browser frontend scaffold and does not yet run the complete generation flow. The planned replacement is a Next.js frontend backed by FastAPI; see [docs/nextjs-fastapi-plan.md](docs/nextjs-fastapi-plan.md).
+The same Python pipeline powers both the CLI (`scripts/`) and the web app: the reusable service layer lives in `backend/app/services/`, the FastAPI application in `backend/app/`, and the Next.js MVP in `frontend/`. The Rust application in `web/` is an older, unfinished scaffold.
 
 ## Project structure
 
@@ -62,7 +101,7 @@ Create `.env` in the project root:
 ```text
 OPENCODE_GO_API_KEY=your-key
 LLM_PROVIDER=opencode
-LLM_MODEL=kimi-k3
+LLM_MODEL=deepseek-v4-pro
 ```
 
 Place the canonical resume at:
@@ -110,12 +149,12 @@ python3 tests/test_all_opencode_models.py
 
 ## Model configuration
 
-The default model is `kimi-k3` through the OpenCode Go Chat Completions endpoint. The client sends the required stable `x-opencode-session` header and uses `temperature=1.0` with `top_p=0.95`.
+The default model is `deepseek-v4-pro` through the OpenCode Go Chat Completions endpoint. The client sends the required stable `x-opencode-session` header and uses `temperature=1.0`.
 
 Environment variables can override the defaults:
 
 ```text
-LLM_MODEL=kimi-k3
+LLM_MODEL=deepseek-v4-pro
 LLM_TEMPERATURE=1.0
 LLM_MAX_TOKENS=8000
 OPENCODE_GO_BASE_URL=https://opencode.ai/zen/go/v1
