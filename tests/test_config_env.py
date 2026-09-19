@@ -9,6 +9,8 @@ lets the same unprefixed variables (``OPENCODE_GO_API_KEY``, ``LLM_PROVIDER``,
 
 from __future__ import annotations
 
+import pytest
+
 from app.core import config
 
 
@@ -40,6 +42,8 @@ def test_opencode_provider_uses_opencode_key(monkeypatch):
 
 
 def test_dotenv_loader_is_available_for_unprefixed_keys():
-    # python-dotenv is declared as an optional dependency; when present the
-    # .env file is loaded so the os.getenv fallback can see the key.
+    # python-dotenv is an optional dependency; when present the .env file is
+    # loaded so the os.getenv fallback can see the key. Without it, settings
+    # still work from real environment variables.
+    pytest.importorskip("dotenv")
     assert config.load_dotenv is not None
