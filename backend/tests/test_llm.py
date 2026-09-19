@@ -112,5 +112,25 @@ class OpenAICompatibleTests(unittest.TestCase):
         )
 
 
+class OpencodeClientTests(unittest.TestCase):
+    def test_opencode_client_sends_session_header(self):
+        settings = make_settings(
+            LLM_PROVIDER="opencode", OPENCODE_GO_API_KEY="secret"
+        )
+        with mock.patch("openai.OpenAI") as ctor:
+            llm._build_openai_client(settings, "opencode")
+
+        headers = (ctor.call_args.kwargs or {}).get("default_headers") or {}
+        self.assertTrue(headers.get("x-opencode-session"))
+        self.assertIn("User-Agent", headers)
+
+    def test_non_opencode_client_has_no_session_header(self):
+        settings = make_settings(LLM_PROVIDER="openai", OPENAI_API_KEY="secret")
+        with mock.patch("openai.OpenAI") as ctor:
+            llm._build_openai_client(settings, "openai")
+
+        self.assertNotIn("default_headers", ctor.call_args.kwargs)
+
+
 if __name__ == "__main__":
     unittest.main()
