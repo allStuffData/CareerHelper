@@ -1,6 +1,18 @@
-# Generated PDFs
-Output/*.pdf
-RunningTemplate/*.pdf
+# Local resume assets and generated files
+resources/templates/latex/*
+!resources/templates/latex/.gitkeep
+resources/templates/source/*
+!resources/templates/source/.gitkeep
+resources/workspace/*
+!resources/workspace/.gitkeep
+resources/output/*
+!resources/output/.gitkeep
+
+# Private reference and inspiration material
+inspiration/
+
+# Generated model availability report
+tests/model-summary.md
 
 # LaTeX build artifacts
 *.aux
@@ -25,7 +37,7 @@ web/*.db*
 web/tailwindcss-*
 
 # Local config (contains API keys)
-Scripts/config_local.py
+scripts/config_local.py
 
 # Environment (contains API keys)
 .env
@@ -35,3 +47,4 @@ Scripts/config_local.py
 
 # Local agent workspace state
 .codewhale/
+.kilo/worktrees/

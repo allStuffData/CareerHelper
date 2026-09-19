@@ -31,7 +31,7 @@ impl Config {
             opencode_base_url: std::env::var("OPENCODE_GO_BASE_URL")
                 .unwrap_or_else(|_| "https://opencode.ai/zen/go/v1".into()),
             llm_model: std::env::var("LLM_MODEL")
-                .unwrap_or_else(|_| "deepseek-v4-pro".into()),
+                .unwrap_or_else(|_| "kimi-k3".into()),
             latex_engine: std::env::var("LATEX_ENGINE")
                 .unwrap_or_else(|_| "pdflatex".into()),
         })

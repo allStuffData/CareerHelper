@@ -56,7 +56,7 @@ in seconds. No accounts. No clutter. Paste a JD, get a PDF.
 │  ┌─────────────────────────────────────────────────────┐ │
 │  │  External Dependencies                                │ │
 │  │  • pdflatex / xelatex  (system binary)               │ │
-│  │  • DeepSeek V4 Pro     (OpenCode Zen Go API)         │ │
+│  │  • Kimi K3             (OpenCode Go API)             │ │
 │  │  • pandoc              (optional, for MD/HTML→LaTeX) │ │
 │  └─────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────┘
@@ -189,7 +189,7 @@ Border:      #E2E8F0  (slate-200)      — dividers, input borders
 │ llm_prompt   │     (full prompt sent to LLM)
 │ llm_response │     (raw LLM output)
 │ tex_content  │     (final .tex after tailoring)
-│ pdf_path     │     (relative path in Output/)
+│ pdf_path     │     (relative path in resources/output/)
 │ token_usage  │     (JSON: prompt_tokens, completion_tokens)
 │ created_at   │
 └──────────────┘
@@ -216,11 +216,11 @@ User visits / → pastes job description
   → backend:
       1. Loads the selected template's LaTeX content
       2. Constructs the ATS-optimization prompt (JD + template)
-      3. Calls DeepSeek V4 Pro API
+      3. Calls Kimi K3 through the OpenCode Go API
       4. Extracts the tailored .tex from the LLM response
-      5. Writes .tex to RunningTemplate/
+      5. Writes .tex to resources/workspace/
       6. Calls pdflatex → produces PDF
-      7. Copies PDF to Output/ with company_role_date filename
+      7. Copies PDF to resources/output/ with company_role_date filename
       8. Records generation in SQLite
   → frontend shows download button + preview
 ```
@@ -325,7 +325,7 @@ binary listens on `127.0.0.1:3000`.
 
 - [README.md](../README.md) — current Python pipeline, setup, and CLI reference
 - [Project Checklist](project_checklist.md) — phased implementation roadmap
-- [Scripts/tailor_resume.py](../Scripts/tailor_resume.py) — the ATS-optimized LLM prompt
-- [LatexTemplate/](../LatexTemplate/) — the canonical LaTeX resume template
+- [scripts/tailor_resume.py](../scripts/tailor_resume.py) — the ATS-optimized LLM prompt
+- [resources/templates/latex/](../resources/templates/latex/) — local canonical LaTeX resume template
 
 *Last updated: 2026-08-09*

@@ -14,6 +14,7 @@ struct ChatRequest {
     model: String,
     messages: Vec<ChatMessage>,
     temperature: f64,
+    top_p: f64,
     max_tokens: u32,
 }
 
@@ -57,6 +58,7 @@ pub async fn chat(
     user_prompt: &str,
 ) -> anyhow::Result<LlmResponse> {
     let client = reqwest::Client::new();
+    let session_id = uuid::Uuid::new_v4().to_string();
 
     let request = ChatRequest {
         model: model.to_string(),
@@ -70,13 +72,16 @@ pub async fn chat(
                 content: user_prompt.to_string(),
             },
         ],
-        temperature: 0.3,
+        temperature: 1.0,
+        top_p: 0.95,
         max_tokens: 8000,
     };
 
     let response = client
         .post(format!("{}/chat/completions", base_url.trim_end_matches('/')))
         .header("Authorization", format!("Bearer {}", api_key))
+        .header("User-Agent", "careerhelper-web/0.1")
+        .header("x-opencode-session", session_id)
         .json(&request)
         .send()
         .await?;

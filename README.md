@@ -1,122 +1,128 @@
-# CareerHelper — ATS-Optimized Resume Pipeline
+# CareerHelper — Job-Tailored Resume Generator
 
-> One LaTeX template. One command. A resume tailored to any job in seconds.
+CareerHelper takes a canonical LaTeX resume and a target job description, asks Kimi K3 to tailor the resume toward that role, then compiles the result into a PDF.
 
-## What this does
+The tailoring prompt tells the model to extract job keywords, map them to existing experience, rewrite and reorder bullets, select the most relevant projects, and preserve factual accuracy. It must not change employers, titles, dates, degrees, awards, or invent experience.
 
-You paste a job description. DeepSeek V4 Pro rewrites your LaTeX resume to maximize
-keyword matches against the job description — reordering bullet points, weaving in
-JD terminology, and pruning irrelevant content — then compiles it to a clean,
-one-page PDF. All without ever changing where you worked or what you did.
+## How the pipeline works
 
+```text
+Canonical LaTeX resume + job description
+                  │
+                  ▼
+        scripts/tailor_resume.py
+                  │
+                  ▼
+       Kimi K3 through OpenCode Go
+                  │
+                  ▼
+      resources/workspace/*.tex
+                  │
+                  ▼
+              pdflatex
+                  │
+                  ▼
+        resources/output/*.pdf
 ```
-$ python3 Scripts/tailor_resume.py
 
-╔══════════════════════════════════════════════════╗
-║   📋  Resume Tailoring — ATS Optimizer           ║
-╚══════════════════════════════════════════════════╝
-
-Company name: Stripe
-Role / position: Technical Program Manager
-
-📄  Paste the job description below (Ctrl+D when done):
-────────────────────────────────────────────────────────────
-[ you paste the JD here — as many lines as you want ]
-[ Ctrl+D when done ]
-────────────────────────────────────────────────────────────
-
-📋 Tailoring resume for Technical Program Manager at Stripe...
-🔨 Compiling with pdflatex...
-✅ PDF saved to: Output/GopalKumar_Stripe_TechnicalProgramManager_20260809.pdf
-```
+The working implementation is the Python pipeline. The Rust application in `web/` is an unfinished browser frontend scaffold and does not yet run the complete generation flow. The planned replacement is a Next.js frontend backed by FastAPI; see [docs/nextjs-fastapi-plan.md](docs/nextjs-fastapi-plan.md).
 
 ## Project structure
 
-```
+```text
 CareerHelper/
-├── LatexTemplate/              # Canonical base resume — never hand-edited per job
-│   └── GopalKumar_Resume.tex
-├── RunningTemplate/            # Working copy — gets overwritten by the LLM pipeline
-│   └── GopalKumar_Resume.tex
-├── Output/                     # Tailored PDFs land here
-├── Scripts/
-│   ├── tailor_resume.py        # Interactive pipeline: paste JD → LLM → LaTeX → PDF
-│   ├── config.py               # Paths, LLM provider, LaTeX engine settings
-│   └── requirements.txt        # openai, anthropic, python-dotenv
-├── WordTemplates/              # Archive of original Word/PDF resumes
-├── docs/                       # Project context, roadmap, implementation checklist
-├── compile_resume.py           # Standalone LaTeX → PDF compiler (no LLM)
-└── .env                        # API keys (gitignored)
+├── scripts/
+│   ├── tailor_resume.py       # Job description → Kimi K3 → tailored LaTeX → PDF
+│   ├── compile_resume.py      # Compile the canonical resume without tailoring
+│   ├── config.py              # Paths, model, provider, and LaTeX configuration
+│   └── requirements.txt
+├── tests/
+│   ├── test_all_opencode_models.py
+│   └── test_deepseek_v4.py
+├── resources/
+│   ├── templates/
+│   │   ├── latex/             # Canonical LaTeX resume; local and gitignored
+│   │   └── source/            # Word/PDF references; local and gitignored
+│   ├── workspace/             # Generated LaTeX and build files; gitignored
+│   └── output/                # Generated PDFs; gitignored
+├── docs/                      # Architecture and roadmap
+├── web/                       # Rust/Axum frontend scaffold
+├── .env                       # API keys and local overrides; gitignored
+└── .gitignore
 ```
 
 ## Setup
 
 ```bash
-# 1. Install Python dependencies
-pip install -r Scripts/requirements.txt
-
-# 2. Add your API key to the .env file
-echo 'OPENCODE_GO_API_KEY=sk-...' > .env
-
-# 3. (macOS) Make sure LaTeX is installed
-#    Already included if you have MacTeX. Otherwise:
-#    brew install --cask mactex
-
-# 4. Run it
-python3 Scripts/tailor_resume.py
+pip install -r scripts/requirements.txt
 ```
 
-## How it works
+Create `.env` in the project root:
 
-The pipeline has three stages:
+```text
+OPENCODE_GO_API_KEY=your-key
+LLM_PROVIDER=opencode
+LLM_MODEL=kimi-k3
+```
 
-1. **LLM Tailoring** — DeepSeek V4 Pro (via OpenCode Zen Go) receives a 5-phase
-   ATS-optimization system prompt. It extracts keywords from the JD, maps them to
-   your experience, rewrites bullet points for maximum keyword density, reorders
-   content by relevance, and outputs the complete `.tex` file.
+Place the canonical resume at:
 
-2. **LaTeX Compilation** — `pdflatex` compiles the `.tex` to PDF. The template is
-   tuned to always produce exactly one page.
+```text
+resources/templates/latex/GopalKumar_Resume.tex
+```
 
-3. **Output** — The PDF is saved to `Output/GopalKumar_{Company}_{Role}_{Date}.pdf`.
+Install a LaTeX distribution that provides `pdflatex`.
 
-## LLM providers
+## Usage
 
-| Provider | Default model | Config |
-|----------|--------------|--------|
-| OpenCode Zen Go (default) | `deepseek-v4-pro` | `OPENCODE_GO_API_KEY` in `.env` |
-| OpenAI | `gpt-4o` | `OPENAI_API_KEY` in `.env` + `--provider openai` |
-| Anthropic | `claude-sonnet-4-20250514` | `ANTHROPIC_API_KEY` in `.env` + `--provider anthropic` |
-
-## CLI reference
+Interactive mode:
 
 ```bash
-# Interactive mode (default)
-python3 Scripts/tailor_resume.py
-
-# Scripting mode (skip prompts)
-python3 Scripts/tailor_resume.py --company "Stripe" --role "TPM" --job-file jd.txt
-
-# Preview without compiling
-python3 Scripts/tailor_resume.py --dry-run
-
-# Just recompile the current RunningTemplate
-python3 Scripts/tailor_resume.py --compile-only
-
-# Standalone compiler (no LLM)
-python3 compile_resume.py
+python3 scripts/tailor_resume.py
 ```
 
-## Future: Rust frontend
+Pass a job-description file directly:
 
-See [`docs/project_context.md`](docs/project_context.md) for the full architecture
-and [`docs/project_checklist.md`](docs/project_checklist.md) for the implementation roadmap.
+```bash
+python3 scripts/tailor_resume.py \
+  --company "Stripe" \
+  --role "Technical Program Manager" \
+  --job-file job-description.txt
+```
 
-The vision is a clean, minimal web UI where users can:
+Generate LaTeX without compiling a PDF:
 
-- Upload resumes (PDF, Word, Markdown, HTML) and extract structured templates
-- Maintain multiple template variants for different role types
-- Paste a job description and get a tailored PDF in seconds
-- All powered by the same LaTeX pipeline, wrapped in a fast Rust backend
+```bash
+python3 scripts/tailor_resume.py --dry-run
+```
 
----
+Compile the canonical resume without LLM tailoring:
+
+```bash
+python3 scripts/compile_resume.py
+```
+
+Refresh the OpenCode Go model availability report:
+
+```bash
+python3 tests/test_all_opencode_models.py
+```
+
+## Model configuration
+
+The default model is `kimi-k3` through the OpenCode Go Chat Completions endpoint. The client sends the required stable `x-opencode-session` header and uses `temperature=1.0` with `top_p=0.95`.
+
+Environment variables can override the defaults:
+
+```text
+LLM_MODEL=kimi-k3
+LLM_TEMPERATURE=1.0
+LLM_MAX_TOKENS=8000
+OPENCODE_GO_BASE_URL=https://opencode.ai/zen/go/v1
+```
+
+## Git and private files
+
+Git should contain source code, documentation, tests, database migrations, and empty resource-directory placeholders. It should not contain API keys, personal resumes, transcripts, Word/PDF source documents, generated LaTeX, generated PDFs, SQLite databases, build output, or generated model reports.
+
+The initial repository commit already included personal documents. The current `.gitignore` prevents the reorganized local copies from being added again, but it does not remove them from existing GitHub history. Removing those historical copies requires a deliberate history rewrite and force push.

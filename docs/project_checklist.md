@@ -114,13 +114,13 @@
 
 - [ ] **3.1** LLM client service
   - Generic trait for LLM providers
-  - OpenCode Zen Go implementation (DeepSeek V4 Pro)
+  - OpenCode Go implementation (Kimi K3)
   - OpenAI fallback implementation
   - Configurable: model, temperature, max_tokens per provider
   - Streaming support: SSE endpoint for real-time progress
 
 - [ ] **3.2** Prompt construction
-  - Port the 5-phase ATS system prompt from `Scripts/tailor_resume.py`
+  - Port the 5-phase ATS system prompt from `scripts/tailor_resume.py`
   - Template engine: inject JD, company, role, and LaTeX content into prompt
   - Keep prompt in a template file (not hardcoded) for easy iteration
 
