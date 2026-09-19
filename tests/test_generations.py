@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from urllib.parse import unquote
 
 from fastapi.testclient import TestClient
@@ -89,8 +90,39 @@ def test_create_generation_failure_is_recorded(client, adapter, settings):
     assert failed["error_code"] == "compile_failed"
     assert "compilation failed" in failed["error_message"]
     assert failed["pdf_url"] is None
+    # The rejected LaTeX is kept on disk for debugging, but it is not a
+    # deliverable, so the response must not advertise it.
+    assert failed["tex_url"] is None
 
     assert client.get(f"/api/generations/{generation_id}/pdf").status_code == 404
+    # ...while the raw artifact stays reachable for post-mortems.
+    assert client.get(f"/api/generations/{generation_id}/tex").status_code == 200
+
+
+def test_empty_artifact_is_not_served_as_success(client, store):
+    """A zero-byte .pdf/.tex must 404, and stop being advertised.
+
+    Truncated runs used to leave empty files behind and the API answered 200
+    with an empty body, which looks like a successful download to the browser.
+    """
+    generation_id = client.post("/api/generations", json=PAYLOAD).json()["id"]
+    completed = wait_for_status(client, generation_id)
+    assert completed["pdf_url"] is not None
+
+    # Truncate exactly what the API resolves for this generation: the pdf from
+    # the adapter and the per-generation .tex snapshot in the output dir.
+    row = store.get_generation(generation_id)
+    for stored_path in (row.pdf_path, row.tex_path):
+        assert stored_path, "fixture should have produced both artifacts"
+        Path(stored_path).write_bytes(b"")
+
+    assert client.get(f"/api/generations/{generation_id}/pdf").status_code == 404
+    assert client.get(f"/api/generations/{generation_id}/tex").status_code == 404
+
+    # The listing must stop offering links that cannot be fulfilled either.
+    after = client.get(f"/api/generations/{generation_id}").json()
+    assert after["pdf_url"] is None
+    assert after["tex_url"] is None
 
 
 def test_events_stream_reports_progress(client):

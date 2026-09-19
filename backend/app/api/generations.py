@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from fastapi.responses import FileResponse, StreamingResponse
@@ -25,14 +25,38 @@ logger = logging.getLogger(__name__)
 
 
 # ── serialisation ────────────────────────────────────────────────────────
-def _to_response(generation: Generation) -> GenerationResponse:
+def _artifact_usable(path_str: Optional[str], settings) -> bool:
+    """Non-raising predicate sibling of :func:`_resolve_artifact`.
+
+    ``_to_response`` only advertises URLs, so it must not hand the browser a
+    link that 404s or 403s on click. Reusing the resolver keeps one source of
+    truth for "is this artifact servable" (exists, non-empty, allowed root).
+    """
+    if not path_str:
+        return False
+    try:
+        _resolve_artifact(path_str, settings)
+    except HTTPException:
+        return False
+    return True
+
+
+def _to_response(generation: Generation, settings) -> GenerationResponse:
     base = f"/api/generations/{generation.id}"
+    completed = generation.status == GenerationStatus.COMPLETED
     pdf_url = (
         f"{base}/pdf"
-        if generation.pdf_path and generation.status == GenerationStatus.COMPLETED
+        if completed and _artifact_usable(generation.pdf_path, settings)
         else None
     )
-    tex_url = f"{base}/tex" if generation.tex_path else None
+    # A failed run keeps its rejected .tex on purpose (debuggability), but the
+    # URL field advertises a deliverable, so it is gated like the PDF: a
+    # zero-byte or out-of-root file must not look like a successful artifact.
+    tex_url = (
+        f"{base}/tex"
+        if completed and _artifact_usable(generation.tex_path, settings)
+        else None
+    )
     return GenerationResponse(
         id=generation.id,
         company=generation.company,
@@ -90,6 +114,15 @@ def _resolve_artifact(path_str: str, settings) -> Path:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Artifact not found"
         )
+    if path.stat().st_size == 0:
+        # A zero-byte .tex/.pdf means the run died before writing real content
+        # (e.g. an empty model response). Serving it as 200 with an empty body
+        # looks like success to the browser, so treat it as unavailable.
+        logger.warning("Refusing to serve empty artifact: %s", path)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Artifact is empty",
+        )
     roots = settings.allowed_artifact_roots
     if roots and not any(path == root or root in path.parents for root in roots):
         logger.warning("Blocked artifact access outside allowed roots: %s", path)
@@ -128,7 +161,7 @@ async def create_generation(
     )
     store.create_generation(generation)
     get_runner(request).submit(generation)
-    return _to_response(generation)
+    return _to_response(generation, get_settings(request))
 
 
 @router.get("", response_model=GenerationListResponse)
@@ -138,14 +171,17 @@ def list_generations(
     offset: int = Query(default=0, ge=0),
 ) -> GenerationListResponse:
     items = get_store(request).list_generations(limit=limit, offset=offset)
+    settings = get_settings(request)
     return GenerationListResponse(
-        items=[_to_response(item) for item in items], count=len(items)
+        items=[_to_response(item, settings) for item in items], count=len(items)
     )
 
 
 @router.get("/{generation_id}", response_model=GenerationResponse)
 def get_generation(generation_id: str, request: Request) -> GenerationResponse:
-    return _to_response(_get_or_404(get_store(request), generation_id))
+    return _to_response(
+        _get_or_404(get_store(request), generation_id), get_settings(request)
+    )
 
 
 @router.get("/{generation_id}/events")
