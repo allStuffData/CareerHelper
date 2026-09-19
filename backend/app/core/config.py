@@ -18,6 +18,19 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # backend/app/core/config.py -> repo root is three parents up.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
+# pydantic-settings reads the .env file into fields but does not populate
+# ``os.environ``. Phase 1 (and its load_settings) read unprefixed variables
+# such as ``OPENCODE_GO_API_KEY`` straight from the environment, so load the
+# same .env file here once. ``override=False`` means real environment
+# variables always win, keeping Phase 1/CLI behaviour unchanged.
+try:  # python-dotenv is optional; env vars work without it
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - exercised only without the dep
+    load_dotenv = None  # type: ignore[assignment]
+
+if load_dotenv is not None:
+    load_dotenv(_REPO_ROOT / ".env")
+
 
 class Settings(BaseSettings):
     """Runtime settings for the FastAPI application layer."""
@@ -91,6 +104,8 @@ class Settings(BaseSettings):
             object.__setattr__(
                 self, "openai_api_key", os.getenv("OPENAI_API_KEY") or None
             )
+        if os.getenv("LLM_PROVIDER") and self.llm_provider == "opencode":
+            object.__setattr__(self, "llm_provider", os.getenv("LLM_PROVIDER"))
         if os.getenv("LLM_MODEL") and self.llm_model == "kimi-k3":
             object.__setattr__(self, "llm_model", os.getenv("LLM_MODEL"))
         if os.getenv("LATEX_ENGINE") and self.latex_engine == "pdflatex":

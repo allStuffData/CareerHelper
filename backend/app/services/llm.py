@@ -13,11 +13,17 @@ exit codes.
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 from .prompts import SYSTEM_PROMPT
 from .settings import OPENAI_COMPATIBLE_PROVIDERS, Settings, load_settings
+
+# OpenCode Go routes requests by session and rejects calls that omit the
+# ``x-opencode-session`` header (HTTP 400 MissingSessionID). The original CLI
+# sent one stable id per process; keep that behaviour here.
+_OPENCODE_SESSION_ID = str(uuid.uuid4())
 
 
 class LLMError(RuntimeError):
@@ -73,6 +79,17 @@ def _build_openai_client(settings: Settings, provider: str) -> Any:
     from openai import OpenAI
 
     base_url = settings.base_url_for(provider) or None
+    if provider == "opencode":
+        # OpenCode Go requires the session header or it returns
+        # ``400 MissingSessionID`` (parity with the original CLI client).
+        return OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            default_headers={
+                "User-Agent": "careerhelper-resume-tailor/1.0",
+                "x-opencode-session": _OPENCODE_SESSION_ID,
+            },
+        )
     return OpenAI(api_key=api_key, base_url=base_url)
 
 
