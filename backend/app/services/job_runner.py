@@ -50,11 +50,16 @@ class GenerationRunner:
         jobs: JobManager,
         adapter: ServiceAdapter,
         default_template_path: Optional[Path] = None,
+        output_dir: Optional[Path] = None,
     ) -> None:
         self.store = store
         self.jobs = jobs
         self.adapter = adapter
         self.default_template_path = default_template_path
+        # Where per-generation artifacts live. Phase 1's compile step stores
+        # the PDF here; the runner also snapshots the tailored .tex here so a
+        # later run cannot overwrite an earlier generation's LaTeX.
+        self.output_dir = Path(output_dir) if output_dir is not None else None
 
     # ── submission ───────────────────────────────────────────────────────
     def submit(self, generation: Generation) -> asyncio.Task:
@@ -189,14 +194,48 @@ class GenerationRunner:
             event["tex_filename"] = Path(tex_path).name
         self.jobs.publish(generation_id, event)
 
+    # ── artifacts ────────────────────────────────────────────────────────
+    def _persist_tex(self, generation_id: str, result: GenerationResult) -> Optional[str]:
+        """Snapshot the tailored LaTeX to a stable per-generation file.
+
+        Phase 1 writes the working ``.tex`` to a single shared path, so a later
+        generation overwrites it. Persist the returned source next to the PDF
+        so ``GET /api/generations/{id}/tex`` keeps serving this generation's
+        LaTeX even after subsequent runs.
+        """
+        latex = getattr(result, "latex", None)
+        if not latex or self.output_dir is None:
+            return result.tex_path
+        try:
+            from app.services.storage import build_artifact_path
+
+            destination = build_artifact_path(
+                self.output_dir, generation_id, extension="tex"
+            )
+        except Exception:  # noqa: BLE001 - fall back to a bounded name
+            safe = "".join(
+                ch for ch in generation_id if ch.isalnum() or ch in "-_ "
+            )[:120] or "resume"
+            destination = self.output_dir / f"{safe}.tex"
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(latex, encoding="utf-8")
+        except OSError as exc:
+            logger.warning(
+                "Could not persist tex artifact for %s: %s", generation_id, exc
+            )
+            return result.tex_path
+        return str(destination)
+
     # ── terminals ────────────────────────────────────────────────────────
     def _complete(self, generation_id: str, result: GenerationResult) -> None:
+        tex_path = self._persist_tex(generation_id, result)
         self.store.update_generation(
             generation_id,
             status=GenerationStatus.COMPLETED,
             stage=GenerationStage.COMPLETED,
             pdf_path=result.pdf_path,
-            tex_path=result.tex_path,
+            tex_path=tex_path,
             prompt_tokens=result.prompt_tokens,
             completion_tokens=result.completion_tokens,
             model=result.model,
@@ -208,7 +247,7 @@ class GenerationRunner:
             status=GenerationStatus.COMPLETED,
             message="Completed",
             pdf_path=result.pdf_path,
-            tex_path=result.tex_path,
+            tex_path=tex_path,
         )
 
     def _fail(
@@ -229,7 +268,7 @@ class GenerationRunner:
             fields.update(
                 {
                     "pdf_path": result.pdf_path,
-                    "tex_path": result.tex_path,
+                    "tex_path": self._persist_tex(generation_id, result),
                     "prompt_tokens": result.prompt_tokens,
                     "completion_tokens": result.completion_tokens,
                     "model": result.model,

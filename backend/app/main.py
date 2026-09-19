@@ -52,6 +52,7 @@ def create_app(
         jobs=jobs,
         adapter=adapter,
         default_template_path=settings.default_template_path,
+        output_dir=settings.phase1_output_dir,
     )
 
     @asynccontextmanager

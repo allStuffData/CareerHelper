@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.services.integration import ServiceAdapter
-from tests.conftest import wait_for_status
+from tests.conftest import FakeAdapter, wait_for_status
 
 PAYLOAD = {
     "company": "Stripe",
@@ -180,3 +180,27 @@ def test_missing_phase1_services_marks_generation_failed(settings, store, jobs):
         failed = wait_for_status(test_client, generation_id)
     assert failed["status"] == "failed"
     assert failed["error_code"] in ("unexpected_error", "generation_failed")
+
+
+def test_tex_artifact_is_snapshotted_per_generation(settings, store, jobs):
+    """A later run must not clobber an earlier generation's downloadable LaTeX."""
+    shared = settings.phase1_workspace_dir / "GopalKumar_Resume.tex"
+    adapter = FakeAdapter(settings.artifacts_dir, shared_tex_path=shared)
+    app = create_app(settings=settings, store=store, jobs=jobs, adapter=adapter)
+
+    with TestClient(app) as test_client:
+        first = test_client.post("/api/generations", json=PAYLOAD).json()["id"]
+        wait_for_status(test_client, first)
+
+        stored = store.get_generation(first)
+        assert stored.tex_path is not None
+        assert stored.tex_path.startswith(str(settings.phase1_output_dir))
+        assert stored.tex_path != str(shared)
+
+        # Simulate a subsequent generation overwriting the shared working file.
+        shared.write_text("CLOBBERED", encoding="utf-8")
+
+        tex = test_client.get(f"/api/generations/{first}/tex")
+        assert tex.status_code == 200
+        assert "CLOBBERED" not in tex.text
+        assert "documentclass" in tex.text

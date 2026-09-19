@@ -50,11 +50,15 @@ class FakeAdapter:
         fail: bool = False,
         fail_code: str = "compile_failed",
         pdf_bytes: bytes = b"%PDF-1.4\n% fake pdf\n",
+        shared_tex_path: Path | None = None,
     ) -> None:
         self.artifacts_dir = Path(artifacts_dir)
         self.fail = fail
         self.fail_code = fail_code
         self.pdf_bytes = pdf_bytes
+        # When set, mimic Phase 1 by writing the working .tex to one shared
+        # path instead of a per-generation file.
+        self.shared_tex_path = Path(shared_tex_path) if shared_tex_path else None
         self.calls: list = []
         self.source = "fake"
 
@@ -75,7 +79,11 @@ class FakeAdapter:
             progress_callback(ProgressEvent(stage=STAGE_COMPILING_PDF, message="compile"))
 
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
-        tex_path = self.artifacts_dir / f"{request.generation_id}.tex"
+        if self.shared_tex_path is not None:
+            tex_path = self.shared_tex_path
+            tex_path.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            tex_path = self.artifacts_dir / f"{request.generation_id}.tex"
         tex_path.write_text(request.template_latex, encoding="utf-8")
 
         if self.fail:
