@@ -47,3 +47,12 @@ def test_dotenv_loader_is_available_for_unprefixed_keys():
     # still work from real environment variables.
     pytest.importorskip("dotenv")
     assert config.load_dotenv is not None
+
+
+def test_default_model_matches_phase1_effective_default(monkeypatch):
+    # /api/health must report the model the Phase 1 pipeline actually uses.
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    from app.services.settings import Settings as Phase1Settings
+
+    phase1_model = Phase1Settings.from_env(env={}).llm_model
+    assert config.Settings(_env_file=None).llm_model == phase1_model

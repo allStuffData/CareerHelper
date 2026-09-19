@@ -64,7 +64,9 @@ class Settings(BaseSettings):
 
     # ── LLM / OpenCode ───────────────────────────────────────────────────
     llm_provider: str = "opencode"
-    llm_model: str = "kimi-k3"
+    # Must match Phase 1's effective opencode default (app.services.settings)
+    # so /api/health reports the model the pipeline actually uses.
+    llm_model: str = "deepseek-v4-pro"
     opencode_go_base_url: str = "https://opencode.ai/zen/go/v1"
     opencode_go_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
@@ -106,7 +108,7 @@ class Settings(BaseSettings):
             )
         if os.getenv("LLM_PROVIDER") and self.llm_provider == "opencode":
             object.__setattr__(self, "llm_provider", os.getenv("LLM_PROVIDER"))
-        if os.getenv("LLM_MODEL") and self.llm_model == "kimi-k3":
+        if os.getenv("LLM_MODEL") and self.llm_model == "deepseek-v4-pro":
             object.__setattr__(self, "llm_model", os.getenv("LLM_MODEL"))
         if os.getenv("LATEX_ENGINE") and self.latex_engine == "pdflatex":
             object.__setattr__(self, "latex_engine", os.getenv("LATEX_ENGINE"))
