@@ -13,7 +13,7 @@ The application accepts a canonical resume and a job description, asks Kimi K3 t
 - **Python service modules** contain the business logic. CLI scripts and FastAPI call the same functions.
 - **SQLite and local files** are used for the local-first version.
 - **PostgreSQL, object storage, and a durable worker** are deferred until hosted multi-user deployment.
-- The existing Rust frontend remains until the new frontend reaches feature parity, then it can be archived or removed.
+- The Rust frontend that once lived in `web/` was removed after the Next.js app reached parity; the repository no longer carries a second frontend.
 
 ## Request flow
 

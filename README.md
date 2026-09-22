@@ -64,7 +64,7 @@ Canonical LaTeX resume + job description
         resources/output/*.pdf
 ```
 
-The same Python pipeline powers both the CLI (`scripts/`) and the web app: the reusable service layer lives in `backend/app/services/`, the FastAPI application in `backend/app/`, and the Next.js MVP in `frontend/`. The Rust application in `web/` is an older, unfinished scaffold.
+The same Python pipeline powers both the CLI (`scripts/`) and the web app: the reusable service layer lives in `backend/app/services/`, the FastAPI application in `backend/app/`, and the Next.js MVP in `frontend/`.
 
 ## Project structure
 
@@ -75,9 +75,12 @@ CareerHelper/
 │   ├── compile_resume.py      # Compile the canonical resume without tailoring
 │   ├── config.py              # Paths, model, provider, and LaTeX configuration
 │   └── requirements.txt
-├── tests/
-│   ├── test_all_opencode_models.py
-│   └── test_deepseek_v4.py
+├── backend/
+│   ├── app/                   # FastAPI app: api/, core/, services/, schemas/
+│   ├── tests/                 # Phase 1 service tests
+│   └── data/                  # SQLite database and stored artifacts; gitignored
+├── frontend/                  # Next.js App Router UI
+├── tests/                     # Phase 2 API tests; OpenCode model diagnostics
 ├── resources/
 │   ├── templates/
 │   │   ├── latex/             # Canonical LaTeX resume; local and gitignored
@@ -85,7 +88,6 @@ CareerHelper/
 │   ├── workspace/             # Generated LaTeX and build files; gitignored
 │   └── output/                # Generated PDFs; gitignored
 ├── docs/                      # Architecture and roadmap
-├── web/                       # Rust/Axum frontend scaffold
 ├── .env                       # API keys and local overrides; gitignored
 └── .gitignore
 ```

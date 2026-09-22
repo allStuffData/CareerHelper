@@ -15,7 +15,6 @@ inspiration/
 tests/model-summary.md
 
 # LLM debug dumps (may contain resume / job-description content)
-RunningTemplate/_debug_llm_response.txt
 *_debug_llm_response.txt
 
 # Generated service artifacts
@@ -44,13 +43,6 @@ venv/
 backend/data/
 backend/*.db
 backend/*.db-*
-
-# Rust build output and local runtime data
-target/
-web/*.db*
-
-# Downloaded platform-specific tooling
-web/tailwindcss-*
 
 # Local config (contains API keys)
 scripts/config_local.py
