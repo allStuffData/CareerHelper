@@ -249,6 +249,49 @@ class RunGenerationTests(unittest.TestCase):
             fake_run.assert_not_called()
             self.assertEqual([event.stage for event in events], ["done"])
 
+    def test_absent_request_template_reads_canonical_file_from_disk(self):
+        # The API sends template=None and expects the canonical resume on disk
+        # to be used; the missing-template guard must not reject an existing
+        # file, which is the normal production path.
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = make_settings(Path(tmp))
+            settings.base_template.parent.mkdir(parents=True, exist_ok=True)
+            settings.base_template.write_text(
+                "\\documentclass{article}\n"
+                "\\newcommand{\\marker}{CANONICAL-ON-DISK}\n"
+                "\\begin{document}x\\end{document}\n",
+                encoding="utf-8",
+            )
+            events = []
+            calls = []
+
+            def caller(prompt, cfg):
+                calls.append(prompt)
+                return ok_response()
+
+            request = GenerationRequest(
+                job_description="jd",
+                company="Acme",
+                role="PM",
+                template=None,
+                settings=settings,
+                llm_caller=caller,
+            )
+            with mock.patch.object(
+                latex.subprocess, "run", side_effect=self._fake_run_factory(settings)
+            ):
+                result = run_generation(request, progress_callback=events.append)
+
+            self.assertTrue(result.success)
+            self.assertIsNone(result.error_type)
+            # The template came from the file on disk, not from the request.
+            self.assertEqual(len(calls), 1)
+            self.assertIn("CANONICAL-ON-DISK", calls[0])
+            self.assertEqual(
+                [event.stage for event in events],
+                ["tailoring", "tailored", "tex_written", "compiling", "compiled", "done"],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
