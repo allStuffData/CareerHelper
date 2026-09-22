@@ -112,19 +112,39 @@ def run_generation(
     Raises nothing for expected LLM/compilation failures: configuration errors
     (missing key, unsupported provider) are reported via ``error_type='llm'``,
     unusable or truncated model output via ``error_type='tailoring'`` /
-    ``'truncated'``, and compilation failures via ``error_type='compilation'``
-    plus the :class:`ArtifactResult`.
+    ``'truncated'``, a missing source template via ``error_type='template'``,
+    and compilation failures via ``error_type='compilation'`` plus the
+    :class:`ArtifactResult`.
     """
     emit = progress_callback or _noop
     settings = request.settings or load_settings()
-    template = (
-        request.template
-        if request.template is not None
-        else settings.base_template.read_text(encoding="utf-8")
-    )
     generation_id = request.generation_id or build_generation_id(
         request.company, request.role, when=request.when
     )
+
+    if request.template is not None:
+        template = request.template
+    else:
+        # The canonical resume is a private, gitignored asset, so a fresh
+        # clone has none: fail fast with an actionable message instead of
+        # raising FileNotFoundError from deep inside the job.
+        template_path = Path(settings.base_template)
+        if not template_path.is_file():
+            message = (
+                "No resume template found at "
+                f"{template_path}. Add your LaTeX resume there (see README) "
+                "or upload one under Templates, then try again."
+            )
+            emit(ProgressEvent(stage="done", message=message))
+            return GenerationResult(
+                generation_id=generation_id,
+                company=request.company,
+                role=request.role,
+                success=False,
+                error=message,
+                error_type="template",
+            )
+        template = template_path.read_text(encoding="utf-8")
 
     emit(ProgressEvent(stage="tailoring"))
 

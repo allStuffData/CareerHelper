@@ -210,6 +210,45 @@ class RunGenerationTests(unittest.TestCase):
             self.assertIn(str(settings.llm_max_tokens), result.error)
             self.assertIsNone(result.artifact)
 
+    def test_missing_template_fails_fast_without_calling_the_model(self):
+        """A fresh clone has no resume template: fail fast, spend no tokens.
+
+        The canonical resume is a private, gitignored asset, so a clean clone
+        has no default template. This used to raise FileNotFoundError out of
+        the worker thread, which the API reported as a generic
+        ``unexpected_error`` instead of something the operator can act on.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = make_settings(Path(tmp))
+            events = []
+            calls = []
+
+            def caller(prompt, cfg):
+                calls.append(prompt)
+                return ok_response()
+
+            request = GenerationRequest(
+                job_description="jd",
+                company="Acme",
+                role="PM",
+                template=None,
+                settings=settings,
+                llm_caller=caller,
+            )
+            with mock.patch.object(latex.subprocess, "run") as fake_run:
+                result = run_generation(request, progress_callback=events.append)
+
+            self.assertFalse(result.success)
+            self.assertEqual(result.error_type, "template")
+            self.assertIn(str(settings.base_template), result.error)
+            self.assertIn("Templates", result.error)
+            self.assertIsNone(result.artifact)
+            self.assertIsNone(result.tex_path)
+            # No model spend and no compiler invocation for a missing input.
+            self.assertEqual(calls, [])
+            fake_run.assert_not_called()
+            self.assertEqual([event.stage for event in events], ["done"])
+
 
 if __name__ == "__main__":
     unittest.main()
