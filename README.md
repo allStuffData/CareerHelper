@@ -8,6 +8,8 @@ The tailoring prompt tells the model to extract job keywords, map them to existi
 
 The browser talks only to Next.js; the FastAPI base URL and the API key stay server-side.
 
+Implementation status: Phases 1–4 of [docs/nextjs-fastapi-plan.md](docs/nextjs-fastapi-plan.md) are complete and verified end-to-end. That document's **Status** section records exactly what is built and which Phase 5 items are not.
+
 ```bash
 # 1. Python + frontend dependencies (once)
 python3 -m venv .venv
@@ -15,9 +17,7 @@ python3 -m venv .venv
 (cd frontend && npm install)
 
 # 2. Configure the project-root .env (gitignored)
-#    OPENCODE_GO_API_KEY=...
-#    LLM_PROVIDER=opencode        # optional
-#    LLM_MODEL=deepseek-v4-pro    # optional
+cp .env.example .env             # then set OPENCODE_GO_API_KEY=...
 
 # 3. Put the canonical resume at
 #    resources/templates/latex/GopalKumar_Resume.tex
@@ -52,7 +52,7 @@ Canonical LaTeX resume + job description
         scripts/tailor_resume.py
                   │
                   ▼
-       Kimi K3 through OpenCode Go
+       DeepSeek V4 Pro through OpenCode Go
                   │
                   ▼
       resources/workspace/*.tex
@@ -71,7 +71,7 @@ The same Python pipeline powers both the CLI (`scripts/`) and the web app: the r
 ```text
 CareerHelper/
 ├── scripts/
-│   ├── tailor_resume.py       # Job description → Kimi K3 → tailored LaTeX → PDF
+│   ├── tailor_resume.py       # Job description → DeepSeek V4 Pro → tailored LaTeX → PDF
 │   ├── compile_resume.py      # Compile the canonical resume without tailoring
 │   ├── config.py              # Paths, model, provider, and LaTeX configuration
 │   └── requirements.txt
@@ -89,6 +89,7 @@ CareerHelper/
 │   └── output/                # Generated PDFs; gitignored
 ├── docs/                      # Architecture and roadmap
 ├── .env                       # API keys and local overrides; gitignored
+├── .env.example               # Template for .env; copy it and add your key
 └── .gitignore
 ```
 
@@ -98,12 +99,16 @@ CareerHelper/
 pip install -r scripts/requirements.txt
 ```
 
-Create `.env` in the project root:
+Create `.env` in the project root from the template, then fill in your key:
+
+```bash
+cp .env.example .env
+```
 
 ```text
 OPENCODE_GO_API_KEY=your-key
-LLM_PROVIDER=opencode
-LLM_MODEL=deepseek-v4-pro
+# LLM_PROVIDER=opencode        # default
+# LLM_MODEL=deepseek-v4-pro    # default
 ```
 
 Place the canonical resume at:
