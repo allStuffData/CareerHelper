@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from app.api.deps import get_jobs, get_runner, get_settings, get_store
 from app.contracts import STAGE_COMPLETED, STAGE_FAILED
-from app.models.generation import Generation, GenerationStatus
+from app.models.generation import Generation, GenerationStatus, TERMINAL_STATUSES
 from app.schemas.generation import (
     GenerationCreateRequest,
     GenerationListResponse,
@@ -159,6 +159,48 @@ async def create_generation(
         role=payload.role,
         job_description=payload.job_description,
         template_version_id=payload.template_version_id,
+    )
+    store.create_generation(generation)
+    get_runner(request).submit(generation)
+    return _to_response(generation, get_settings(request))
+
+
+@router.post("/{generation_id}/retry", status_code=status.HTTP_202_ACCEPTED)
+async def retry_generation(generation_id: str, request: Request) -> GenerationResponse:
+    """Re-run a finished generation as a new record.
+
+    Retrying appends a new generation instead of resetting the old one, so
+    history stays an append-only log: the original keeps its own artifacts,
+    token usage, and error message for comparison against the retry.
+    """
+    store = get_store(request)
+    original = _get_or_404(store, generation_id)
+    if original.status not in TERMINAL_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only finished generations can be retried.",
+        )
+    if (
+        original.template_version_id is not None
+        and store.get_template_version_latex(original.template_version_id) is None
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "The template version this generation used no longer exists; "
+                "start a new generation with a current template."
+            ),
+        )
+
+    new_id = _unique_generation_id(
+        store, build_generation_id(original.company, original.role)
+    )
+    generation = Generation(
+        id=new_id,
+        company=original.company,
+        role=original.role,
+        job_description=original.job_description,
+        template_version_id=original.template_version_id,
     )
     store.create_generation(generation)
     get_runner(request).submit(generation)

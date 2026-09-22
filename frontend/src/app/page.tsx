@@ -29,8 +29,8 @@ export default async function HomePage({
   let templatesAvailable = false;
   try {
     const result = await listTemplates();
-    templates = result.templates;
-    templatesAvailable = result.available;
+    templates = result.items ?? [];
+    templatesAvailable = true;
   } catch {
     // The generation form still works with the backend default template.
     templatesAvailable = false;

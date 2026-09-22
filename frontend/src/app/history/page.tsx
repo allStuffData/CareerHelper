@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import DeleteGenerationButton from "@/components/DeleteGenerationButton";
+import RetryGenerationButton from "@/components/RetryGenerationButton";
 import { ApiError, listGenerations } from "@/lib/api";
 import type { Generation } from "@/lib/types";
 
@@ -99,6 +100,10 @@ export default async function HistoryPage() {
                           >
                             PDF
                           </a>
+                        ) : null}
+                        {generation.status === "completed" ||
+                        generation.status === "failed" ? (
+                          <RetryGenerationButton id={generation.id} />
                         ) : null}
                         <DeleteGenerationButton id={generation.id} />
                       </div>

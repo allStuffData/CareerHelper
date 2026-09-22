@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import TemplateUploadForm from "@/components/TemplateUploadForm";
 import { ApiError, listTemplates } from "@/lib/api";
 import type { Template } from "@/lib/types";
 
@@ -9,6 +10,11 @@ function TemplateCard({ template }: { template: Template }) {
   return (
     <article className="card">
       <h2 style={{ marginBottom: "0.25rem" }}>{template.name}</h2>
+      {template.description ? (
+        <p className="muted" style={{ marginBottom: "0.25rem" }}>
+          {template.description}
+        </p>
+      ) : null}
       {template.original_filename ? (
         <p className="muted" style={{ marginBottom: "0.5rem" }}>
           {template.original_filename}
@@ -20,12 +26,19 @@ function TemplateCard({ template }: { template: Template }) {
           <dd>{template.active_version ?? "—"}</dd>
         </div>
         <div>
+          <dt>Versions</dt>
+          <dd>{template.version_count ?? 0}</dd>
+        </div>
+        <div>
           <dt>Updated</dt>
           <dd>{template.updated_at ?? template.created_at ?? "—"}</dd>
         </div>
       </dl>
       <div className="btn-row" style={{ marginTop: "1rem" }}>
-        <Link className="btn" href={`/?template=${template.id}`}>
+        <Link
+          className="btn"
+          href={`/?template=${template.active_version_id ?? template.id}`}
+        >
           Use this template
         </Link>
       </div>
@@ -35,18 +48,14 @@ function TemplateCard({ template }: { template: Template }) {
 
 export default async function TemplatesPage() {
   let templates: Template[] = [];
-  let available = true;
   let error: string | null = null;
 
   try {
     const result = await listTemplates();
-    templates = result.templates;
-    available = result.available;
+    templates = result.items ?? [];
   } catch (caught) {
     error =
-      caught instanceof ApiError
-        ? caught.message
-        : "Could not load templates.";
+      caught instanceof ApiError ? caught.message : "Could not load templates.";
   }
 
   return (
@@ -65,35 +74,26 @@ export default async function TemplatesPage() {
         </div>
       ) : null}
 
-      {!available && !error ? (
-        <div className="card">
-          <div className="empty-state">
-            <h2>Template management is not available yet</h2>
-            <p>
-              The backend does not currently expose the template API. Every
-              generation uses the canonical resume configured on the server.
-            </p>
-            <Link className="btn" href="/">
-              Back to generation
-            </Link>
-          </div>
-        </div>
-      ) : null}
-
-      {available && templates.length === 0 && !error ? (
+      {!error && templates.length === 0 ? (
         <div className="card">
           <div className="empty-state">
             <h2>No templates saved</h2>
-            <p>Upload a canonical resume in a future release.</p>
+            <p>
+              Add one below, or place a canonical resume on the server and
+              restart the backend to seed it automatically.
+            </p>
           </div>
         </div>
       ) : null}
 
-      {available
-        ? templates.map((template) => (
-            <TemplateCard key={template.id} template={template} />
-          ))
-        : null}
+      {templates.map((template) => (
+        <TemplateCard key={template.id} template={template} />
+      ))}
+
+      <h2 className="section-title" style={{ marginTop: "2rem" }}>
+        Add a template
+      </h2>
+      <TemplateUploadForm />
     </>
   );
 }

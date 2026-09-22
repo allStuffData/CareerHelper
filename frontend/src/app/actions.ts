@@ -2,10 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 
-import { ApiError, createGeneration, deleteGeneration } from "@/lib/api";
+import {
+  ApiError,
+  createGeneration,
+  createTemplate,
+  deleteGeneration,
+  retryGeneration,
+} from "@/lib/api";
 import type {
   CreateGenerationState,
+  CreateTemplateState,
   DeleteGenerationState,
+  RetryGenerationState,
 } from "@/lib/types";
 
 const GENERIC_ERROR = "Could not reach the CareerHelper API.";
@@ -56,6 +64,52 @@ export async function deleteGenerationAction(
     await deleteGeneration(id);
     revalidatePath("/history");
     return { ok: true };
+  } catch (error) {
+    return { ok: false, error: messageFor(error) };
+  }
+}
+
+export async function createTemplateAction(
+  _previous: CreateTemplateState,
+  formData: FormData,
+): Promise<CreateTemplateState> {
+  const name = String(formData.get("name") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+  const originalFilename = String(formData.get("original_filename") ?? "").trim();
+  const latexContent = String(formData.get("latex_content") ?? "").trim();
+
+  if (!name) {
+    return { ok: false, error: "Give the template a name." };
+  }
+  if (!latexContent) {
+    return {
+      ok: false,
+      error: "Choose a .tex file or paste the LaTeX source.",
+    };
+  }
+
+  try {
+    const template = await createTemplate({
+      name,
+      description: description || undefined,
+      original_filename: originalFilename || undefined,
+      latex_content: latexContent,
+    });
+    revalidatePath("/templates");
+    revalidatePath("/");
+    return { ok: true, id: template.id };
+  } catch (error) {
+    return { ok: false, error: messageFor(error) };
+  }
+}
+
+export async function retryGenerationAction(
+  id: string,
+): Promise<RetryGenerationState> {
+  try {
+    const generation = await retryGeneration(id);
+    revalidatePath("/history");
+    return { ok: true, id: generation.id };
   } catch (error) {
     return { ok: false, error: messageFor(error) };
   }

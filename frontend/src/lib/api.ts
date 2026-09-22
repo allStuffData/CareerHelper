@@ -12,10 +12,11 @@
 
 import type {
   CreateGenerationInput,
+  CreateTemplateInput,
   Generation,
   GenerationListResponse,
   HealthResponse,
-  Template,
+  TemplateDetail,
   TemplateListResponse,
 } from "./types";
 
@@ -151,22 +152,31 @@ export function deleteGeneration(id: string): Promise<void> {
   });
 }
 
+export function listTemplates(): Promise<TemplateListResponse> {
+  return apiFetch<TemplateListResponse>("/api/templates");
+}
+
+export function getTemplate(id: number): Promise<TemplateDetail> {
+  return apiFetch<TemplateDetail>(`/api/templates/${encodeURIComponent(String(id))}`);
+}
+
+export function createTemplate(input: CreateTemplateInput): Promise<TemplateDetail> {
+  return apiFetch<TemplateDetail>("/api/templates", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 /**
- * Templates are optional: the current backend does not implement
- * `/api/templates`, so a 404/405 resolves to `{ available: false }` instead of
- * failing the page.
+ * Retry a finished generation.
+ *
+ * The backend appends a NEW generation that reuses the original company, role,
+ * job description, and template version, so history stays append-only and the
+ * original run's artifacts and token usage remain intact.
  */
-export async function listTemplates(): Promise<{
-  available: boolean;
-  templates: Template[];
-}> {
-  try {
-    const body = await apiFetch<TemplateListResponse>("/api/templates");
-    return { available: true, templates: body.items ?? [] };
-  } catch (error) {
-    if (error instanceof ApiError && [404, 405, 501].includes(error.status)) {
-      return { available: false, templates: [] };
-    }
-    throw error;
-  }
+export function retryGeneration(id: string): Promise<Generation> {
+  return apiFetch<Generation>(
+    `/api/generations/${encodeURIComponent(id)}/retry`,
+    { method: "POST" },
+  );
 }

@@ -82,18 +82,33 @@ export interface ProgressEvent {
 }
 
 /**
- * Template metadata.
+ * Template metadata as returned by `GET /api/templates`.
  *
- * NOTE: the Phase 2 backend does not yet expose `/api/templates`; these fields
- * follow the plan's data model and the frontend treats the endpoint as optional.
+ * `active_version` is the version NUMBER (not an id); `active_version_id` is the
+ * id that `POST /api/generations` expects as `template_version_id`.
  */
 export interface Template {
   id: number;
   name: string;
+  description?: string | null;
   original_filename?: string | null;
+  active_version_id?: number | null;
   active_version?: number | null;
+  version_count?: number;
   created_at?: string | null;
   updated_at?: string | null;
+}
+
+export interface TemplateVersion {
+  id: number;
+  template_id: number;
+  version: number;
+  created_at?: string | null;
+  latex_content?: string | null;
+}
+
+export interface TemplateDetail extends Template {
+  versions: TemplateVersion[];
 }
 
 export interface TemplateListResponse {
@@ -111,5 +126,27 @@ export interface CreateGenerationState {
 /** State returned by the delete-generation Server Action. */
 export interface DeleteGenerationState {
   ok: boolean;
+  error?: string;
+}
+
+/** Payload for `POST /api/templates` and `POST /api/templates/{id}/versions`. */
+export interface CreateTemplateInput {
+  name: string;
+  description?: string;
+  original_filename?: string;
+  latex_content: string;
+}
+
+/** State returned by the create-template Server Action. */
+export interface CreateTemplateState {
+  ok: boolean;
+  id?: number;
+  error?: string;
+}
+
+/** State returned by the retry-generation Server Action. */
+export interface RetryGenerationState {
+  ok: boolean;
+  id?: string;
   error?: string;
 }

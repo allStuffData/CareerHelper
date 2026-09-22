@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Optional
 
 from app.models.generation import Generation, GenerationStage, GenerationStatus
+from app.models.template import Template, TemplateVersion
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS templates (
@@ -259,7 +260,7 @@ class GenerationStore:
             self._conn.commit()
         return cursor.rowcount > 0
 
-    # ── template lookup (read-only; CRUD arrives in Phase 4) ─────────────
+    # ── template lookup ──────────────────────────────────────────────────
     def get_template_version_latex(self, version_id: int) -> Optional[str]:
         with self._lock:
             row = self._conn.execute(
@@ -267,6 +268,114 @@ class GenerationStore:
                 (version_id,),
             ).fetchone()
         return row["latex_content"] if row is not None else None
+
+    # ── templates ────────────────────────────────────────────────────────
+    #
+    # A template owns an ordered chain of immutable versions. Writes here take
+    # the same reentrant lock as generation writes, so a version bump cannot
+    # race a generation that is reading the active version.
+    _TEMPLATE_SELECT = """
+        SELECT t.*,
+               v.version AS active_version,
+               (SELECT COUNT(*) FROM template_versions tv WHERE tv.template_id = t.id)
+                   AS version_count
+        FROM templates t
+        LEFT JOIN template_versions v ON v.id = t.active_version_id
+    """
+
+    def create_template(
+        self,
+        name: str,
+        latex_content: str,
+        description: Optional[str] = None,
+        original_filename: Optional[str] = None,
+    ) -> Template:
+        """Create a template together with its first version, activated."""
+        now = utcnow_iso()
+        with self._lock:
+            cursor = self._conn.execute(
+                "INSERT INTO templates "
+                "(name, description, original_filename, active_version_id, created_at, updated_at) "
+                "VALUES (?, ?, ?, NULL, ?, ?)",
+                (name, description, original_filename, now, now),
+            )
+            template_id = int(cursor.lastrowid)
+            version_id = self._insert_template_version(template_id, 1, latex_content, now)
+            self._conn.execute(
+                "UPDATE templates SET active_version_id = ? WHERE id = ?",
+                (version_id, template_id),
+            )
+            self._conn.commit()
+        created = self.get_template(template_id)
+        if created is None:  # pragma: no cover - defensive
+            raise RuntimeError("template %s vanished after insert" % template_id)
+        return created
+
+    def list_templates(self) -> list[Template]:
+        with self._lock:
+            rows = self._conn.execute(
+                self._TEMPLATE_SELECT + 'ORDER BY t.created_at DESC, t.id DESC'
+            ).fetchall()
+        return [self._row_to_template(row) for row in rows]
+
+    def get_template(self, template_id: int) -> Optional[Template]:
+        with self._lock:
+            row = self._conn.execute(
+                self._TEMPLATE_SELECT + 'WHERE t.id = ?', (template_id,)
+            ).fetchone()
+        return self._row_to_template(row) if row is not None else None
+
+    def count_templates(self) -> int:
+        with self._lock:
+            row = self._conn.execute('SELECT COUNT(*) AS n FROM templates').fetchone()
+        return int(row['n']) if row is not None else 0
+
+    def list_template_versions(self, template_id: int) -> list[TemplateVersion]:
+        with self._lock:
+            rows = self._conn.execute(
+                'SELECT * FROM template_versions WHERE template_id = ? '
+                'ORDER BY version DESC',
+                (template_id,),
+            ).fetchall()
+        return [self._row_to_template_version(row) for row in rows]
+
+    def add_template_version(
+        self,
+        template_id: int,
+        latex_content: str,
+        set_active: bool = True,
+    ) -> Optional[TemplateVersion]:
+        now = utcnow_iso()
+        with self._lock:
+            exists = self._conn.execute(
+                'SELECT id FROM templates WHERE id = ?', (template_id,)
+            ).fetchone()
+            if exists is None:
+                return None
+            row = self._conn.execute(
+                'SELECT MAX(version) AS v FROM template_versions '
+                'WHERE template_id = ?',
+                (template_id,),
+            ).fetchone()
+            next_version = int(row['v'] or 0) + 1
+            version_id = self._insert_template_version(
+                template_id, next_version, latex_content, now
+            )
+            if set_active:
+                self._conn.execute(
+                    'UPDATE templates SET active_version_id = ?, '
+                    'updated_at = ? WHERE id = ?',
+                    (version_id, now, template_id),
+                )
+            self._conn.commit()
+            inserted = self._conn.execute(
+                'SELECT * FROM template_versions WHERE id = ?', (version_id,)
+            ).fetchone()
+        return (
+            self._row_to_template_version(inserted)
+            if inserted is not None
+            else None
+        )
 
     # ── helpers ──────────────────────────────────────────────────────────
     @staticmethod
@@ -292,4 +401,42 @@ class GenerationStore:
             created_at=_get("created_at"),
             started_at=_get("started_at"),
             completed_at=_get("completed_at"),
+        )
+
+    def _insert_template_version(
+        self, template_id: int, version: int, latex_content: str, now: str
+    ) -> int:
+        # Caller holds the lock and commits.
+        cursor = self._conn.execute(
+            'INSERT INTO template_versions '
+            '(template_id, version, latex_content, created_at) VALUES (?, ?, ?, ?)',
+            (template_id, version, latex_content, now),
+        )
+        return int(cursor.lastrowid)
+
+    @staticmethod
+    def _row_to_template(row: sqlite3.Row) -> Template:
+        def _get(name: str):
+            return row[name] if name in row.keys() else None
+
+        return Template(
+            id=row['id'],
+            name=row['name'],
+            description=_get('description'),
+            original_filename=_get('original_filename'),
+            active_version_id=_get('active_version_id'),
+            created_at=_get('created_at'),
+            updated_at=_get('updated_at'),
+            active_version=_get('active_version'),
+            version_count=_get('version_count') or 0,
+        )
+
+    @staticmethod
+    def _row_to_template_version(row: sqlite3.Row) -> TemplateVersion:
+        return TemplateVersion(
+            id=row['id'],
+            template_id=row['template_id'],
+            version=row['version'],
+            latex_content=row['latex_content'],
+            created_at=row['created_at'],
         )

@@ -20,11 +20,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core import __version__
-from app.api import generations, health
+from app.api import generations, health, templates
 from app.core.config import Settings, get_settings
 from app.services.integration import ServiceAdapter, resolve_services
 from app.services.job_runner import GenerationRunner
 from app.services.job_manager import JobManager
+from app.services.template_seed import seed_default_template
 from app.db import GenerationStore
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,9 @@ def create_app(
                 len(reaped),
                 ", ".join(reaped),
             )
+        seeded = seed_default_template(store, settings.default_template_path)
+        if seeded:
+            logger.info("Seeded default template %s from the canonical file", seeded.id)
         if not adapter.available:
             logger.warning(
                 "Phase 1 services are not available (missing: %s); "
@@ -98,6 +102,7 @@ def create_app(
 
     app.include_router(health.router)
     app.include_router(generations.router)
+    app.include_router(templates.router)
 
     @app.get("/", include_in_schema=False)
     def root() -> dict:

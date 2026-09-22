@@ -96,18 +96,23 @@ export default function GenerateForm({
           }
         >
           <option value="">Default resume (backend canonical template)</option>
-          {templatesAvailable
-            ? templates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name}
-                </option>
-              ))
-            : null}
+          {templates
+            .filter((template) => template.active_version_id != null)
+            .map((template) => (
+              <option
+                key={template.id}
+                value={template.active_version_id as number}
+              >
+                {template.active_version
+                  ? `${template.name} (v${template.active_version})`
+                  : template.name}
+              </option>
+            ))}
         </select>
         <span className="hint">
           {templatesAvailable
-            ? "Choose a saved template, or use the backend default."
-            : "Template management is not exposed by the API yet; the backend default resume will be used."}
+            ? "Choose a saved template, or use the backend default resume."
+            : "No templates could be loaded; the backend default resume will be used."}
         </span>
       </div>
 
